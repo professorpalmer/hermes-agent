@@ -1,10 +1,8 @@
-import { Fragment, memo, type ReactNode, useState } from 'react'
+import { Fragment, memo, type ReactNode } from 'react'
 
 import { StatusRow } from '@/components/chat/status-row'
-import { TerminalOutput } from '@/components/chat/terminal-output'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
-import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
@@ -115,7 +113,6 @@ export const StatusItemRow = memo(function StatusItemRow({
 }: StatusItemRowProps) {
   const { t } = useI18n()
   const s = t.statusStack
-  const [outputOpen, setOutputOpen] = useState(false)
   const failed = item.state === 'failed'
   const running = item.state === 'running'
 
@@ -127,19 +124,13 @@ export const StatusItemRow = memo(function StatusItemRow({
       : null
 
   const canOpen = item.type === 'subagent' && !!onOpen
-  // Background tasks: a *running* job opens the roomy live process-output modal
-  // (the "see what's running" view) — its gateway subprocess can't live in the
-  // interactive xterm pane, so a dedicated tailing viewer is the honest home for
-  // it. A *finished* job toggles its captured output inline (cheap, no modal).
+  // Background tasks (running OR finished) open the roomy live process-output
+  // modal. Their gateway subprocess can't live in the interactive xterm pane, so
+  // a dedicated tailing viewer is the honest home for the output — one path for
+  // every background row, no dead inline dropdown.
   const isBackground = item.type === 'background'
 
-  const onActivate = canOpen
-    ? onOpen
-    : isBackground
-      ? running
-        ? () => onOpenOutput?.(item.id)
-        : () => setOutputOpen(open => !open)
-      : undefined
+  const onActivate = canOpen ? onOpen : isBackground ? () => onOpenOutput?.(item.id) : undefined
 
   return (
     <Fragment>
@@ -190,14 +181,8 @@ export const StatusItemRow = memo(function StatusItemRow({
             {s.exit(item.exitCode)}
           </span>
         )}
-        {isBackground && <DisclosureCaret className="shrink-0 text-muted-foreground/45" open={outputOpen} size="0.8em" />}
+        {isBackground && <ArrowUpRight aria-hidden className="shrink-0 size-3.5 text-muted-foreground/45" />}
       </StatusRow>
-      {isBackground && outputOpen && (
-        <TerminalOutput
-          className="mx-auto mb-1 max-w-[90%]"
-          text={item.output || (running ? s.waitingForOutput : s.noOutput)}
-        />
-      )}
     </Fragment>
   )
 })

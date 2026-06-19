@@ -119,24 +119,27 @@ describe('StatusItemRow — background task output', () => {
     expect(screen.queryByText(/line 1/)).toBeNull()
   })
 
-  it('a FINISHED task with captured output expands it inline on click', () => {
-    renderRow(bgItem({ state: 'done', output: 'line 1\nline 2\n' }))
+  it('clicking a FINISHED task also opens the modal (one path for every background row)', () => {
+    let openedId: string | null = null
+    renderRowWithHandlers(bgItem({ state: 'done', output: 'line 1\nline 2\n' }), {
+      onOpenOutput: id => (openedId = id)
+    })
+
     fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByText(/line 1/)).toBeTruthy()
+
+    expect(openedId).toBe('bg-1')
+    // No inline disclosure remains — the modal owns output now.
+    expect(screen.queryByText(/line 1/)).toBeNull()
   })
 
-  it('a finished task with no output shows the no-output placeholder when expanded', () => {
-    renderRow(bgItem({ state: 'done' }))
-    fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByText('No output captured.')).toBeTruthy()
-  })
+  it('routes the task id through onOpenOutput so the parent opens the right modal', () => {
+    const opened: string[] = []
+    renderRowWithHandlers(bgItem({ id: 'bg-xyz', state: 'running' }), {
+      onOpenOutput: id => opened.push(id)
+    })
 
-  it('toggles the inline output region closed on a second click (finished task)', () => {
-    renderRow(bgItem({ state: 'done', output: 'hello' }))
-    const row = screen.getByRole('button')
-    fireEvent.click(row)
-    expect(screen.getByText(/hello/)).toBeTruthy()
-    fireEvent.click(row)
-    expect(screen.queryByText(/hello/)).toBeNull()
+    fireEvent.click(screen.getByRole('button'))
+
+    expect(opened).toEqual(['bg-xyz'])
   })
 })
