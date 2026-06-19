@@ -1,6 +1,5 @@
 import { Fragment, memo, type ReactNode, useState } from 'react'
 
-import { setTerminalTakeover } from '@/app/right-sidebar/store'
 import { StatusRow } from '@/components/chat/status-row'
 import { TerminalOutput } from '@/components/chat/terminal-output'
 import { Button } from '@/components/ui/button'
@@ -125,18 +124,13 @@ export const StatusItemRow = memo(function StatusItemRow({
       : null
 
   const canOpen = item.type === 'subagent' && !!onOpen
-  const hasOutput = item.type === 'background' && !!item.output
-
-  // A running background job → clicking the row surfaces the terminal panel for
-  // a quick "what's running right now" peek. A finished job with captured output
-  // → toggle its inline output. Subagents → open their session.
-  const onActivate = canOpen
-    ? onOpen
-    : item.type === 'background' && running
-      ? () => setTerminalTakeover(true)
-      : hasOutput
-        ? () => setOutputOpen(open => !open)
-        : undefined
+  // Every background task is expandable — clicking toggles its captured output
+  // inline (the gateway's process `output_tail`, which live-tails as it grows).
+  // A running task whose first output hasn't arrived yet still expands, showing
+  // a "waiting for output" placeholder, so the click is never a dead no-op
+  // (the "clicking a background task does nothing" bug).
+  const isBackground = item.type === 'background'
+  const onActivate = canOpen ? onOpen : isBackground ? () => setOutputOpen(open => !open) : undefined
 
   return (
     <Fragment>
@@ -187,9 +181,14 @@ export const StatusItemRow = memo(function StatusItemRow({
             {s.exit(item.exitCode)}
           </span>
         )}
-        {hasOutput && <DisclosureCaret className="shrink-0 text-muted-foreground/45" open={outputOpen} size="0.8em" />}
+        {isBackground && <DisclosureCaret className="shrink-0 text-muted-foreground/45" open={outputOpen} size="0.8em" />}
       </StatusRow>
-      {hasOutput && outputOpen && <TerminalOutput className="mx-auto mb-1 max-w-[90%]" text={item.output!} />}
+      {isBackground && outputOpen && (
+        <TerminalOutput
+          className="mx-auto mb-1 max-w-[90%]"
+          text={item.output || (running ? s.waitingForOutput : s.noOutput)}
+        />
+      )}
     </Fragment>
   )
 })
