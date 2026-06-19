@@ -1,18 +1,21 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { $terminalTakeover, setRightSidebarView, setTerminalTakeover } from '@/app/right-sidebar/store'
+import { $rightSidebarView, $terminalTakeover, setRightSidebarView, setTerminalTakeover } from '@/app/right-sidebar/store'
 import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { matchesQuery } from '@/hooks/use-media-query'
 import { PROFILE_SLOT_COUNT, SESSION_SLOT_COUNT } from '@/lib/keybinds/actions'
 import { comboAllowedInInput, comboFromEvent, isEditableTarget } from '@/lib/keybinds/combo'
-import { openBrowser } from '@/store/browser'
+import { $browserState, closeBrowser, openBrowser } from '@/store/browser'
 import { toggleCommandPalette } from '@/store/command-palette'
 import { $capture, $comboIndex, endCapture, setBinding, toggleKeybindPanel } from '@/store/keybinds'
 import {
+  $fileBrowserOpen,
+  $rightRailActiveTabId,
   CHAT_SIDEBAR_PANE_ID,
   FILE_BROWSER_PANE_ID,
   requestSessionSearchFocus,
+  RIGHT_RAIL_BROWSER_TAB_ID,
   setFileBrowserOpen,
   toggleFileBrowserOpen,
   togglePanesFlipped,
@@ -111,6 +114,13 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
   }
 
   const showSourceControl = () => {
+    // Toggle: if the sidebar is already open on source control, close it.
+    if ($fileBrowserOpen.get() && $rightSidebarView.get() === 'source-control') {
+      setFileBrowserOpen(false)
+
+      return
+    }
+
     setFileBrowserOpen(true)
     setTerminalTakeover(false)
     setRightSidebarView('source-control')
@@ -164,7 +174,15 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
     'view.showFiles': showFiles,
     'view.showSourceControl': showSourceControl,
     'view.showTerminal': () => setTerminalTakeover(!$terminalTakeover.get()),
-    'view.showBrowser': () => openBrowser(),
+    'view.showBrowser': () => {
+      // Toggle: close only when the browser is open AND already the active rail
+      // tab; otherwise open it / bring it forward.
+      if ($browserState.get().open && $rightRailActiveTabId.get() === RIGHT_RAIL_BROWSER_TAB_ID) {
+        closeBrowser()
+      } else {
+        openBrowser()
+      }
+    },
     'view.flipPanes': togglePanesFlipped,
 
     'appearance.toggleMode': () => setMode(resolvedMode === 'dark' ? 'light' : 'dark'),
