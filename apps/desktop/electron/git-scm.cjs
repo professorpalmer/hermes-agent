@@ -541,7 +541,10 @@ async function gitApplyHunkForIpc(gitBinary, cwd, patch, options = {}) {
 
   try {
     fs.writeFileSync(tmp, body, 'utf8')
-    const args = ['apply', '--cached', '--whitespace=nowarn']
+    const args = ['apply', '--whitespace=nowarn']
+    // target: 'index' (stage the hunk, default) or 'worktree' (apply to files
+    // on disk — used by edit-review reject to surgically undo the agent's diff).
+    if (options.target !== 'worktree') args.push('--cached')
     if (options.reverse) args.push('--reverse')
     args.push(tmp)
 
@@ -557,6 +560,42 @@ async function gitApplyHunkForIpc(gitBinary, cwd, patch, options = {}) {
       // best effort
     }
   }
+}
+
+// Reject an agent edit: surgically undo just this change. For a newly-created
+// file we delete it; otherwise we reverse-apply the captured diff to the
+// worktree (preserving any unrelated edits in the same file). `git apply` is
+// transactional — it either applies the whole reverse patch or nothing — so a
+// stale/overlapping diff fails cleanly instead of corrupting the file.
+async function gitRevertEditForIpc(gitBinary, cwd, payload = {}) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+
+  const fs = require('node:fs')
+  const nodePath = require('node:path')
+
+  const rel = typeof payload.path === 'string' ? payload.path.trim() : ''
+  if (!rel) return { ok: false, error: 'bad-path' }
+
+  // New file → remove it from the worktree (and the index if it was staged).
+  if (payload.isNew) {
+    const abs = nodePath.join(root, rel)
+    try {
+      fs.unlinkSync(abs)
+    } catch {
+      // already gone — fine
+    }
+    // Drop it from the index too if a prior write staged it (ignore failures).
+    await runGit(gitBinary, root, ['rm', '-f', '--cached', '--ignore-unmatch', '--', rel])
+    return { ok: true }
+  }
+
+  // Existing file → reverse-apply the diff to the worktree.
+  if (typeof payload.diff !== 'string' || !payload.diff.trim()) {
+    return { ok: false, error: 'empty-diff' }
+  }
+
+  return gitApplyHunkForIpc(gitBinary, cwd, payload.diff, { reverse: true, target: 'worktree' })
 }
 
 // Strip dangerous / empty entries and option-like leading dashes (defense in
@@ -596,6 +635,7 @@ module.exports = {
   gitStashPushForIpc,
   gitStashActionForIpc,
   gitApplyHunkForIpc,
+  gitRevertEditForIpc,
   // exported for tests
   _runGit: runGit
 }

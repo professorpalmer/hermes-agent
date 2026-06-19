@@ -9,6 +9,7 @@ import { useI18n } from '@/i18n'
 import { selectDesktopPaths } from '@/lib/desktop-fs'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { cn } from '@/lib/utils'
+import { $activePendingEditCount } from '@/store/agent-edits'
 import { $panesFlipped } from '@/store/layout'
 import { notifyError } from '@/store/notifications'
 import { setCurrentSessionPreviewTarget } from '@/store/preview'
@@ -19,8 +20,9 @@ import { SidebarPanelLabel } from '../shell/sidebar-label'
 import { RemoteFolderPicker } from './files/remote-picker'
 import { ProjectTree } from './files/tree'
 import { useProjectTree } from './files/use-project-tree'
+import { ReviewPanel } from './review'
 import { SourceControlPanel } from './source-control'
-import { $rightSidebarView, setRightSidebarView } from './store'
+import { $rightSidebarView, type RightSidebarView, setRightSidebarView } from './store'
 
 interface RightSidebarPaneProps {
   onActivateFile: (path: string) => void
@@ -33,6 +35,7 @@ export function RightSidebarPane({ onActivateFile, onActivateFolder, onChangeCwd
   const r = t.rightSidebar
   const panesFlipped = useStore($panesFlipped)
   const view = useStore($rightSidebarView)
+  const pendingEditCount = useStore($activePendingEditCount)
   const currentCwd = useStore($currentCwd).trim()
   const hasCwd = currentCwd.length > 0
 
@@ -98,12 +101,16 @@ export function RightSidebarPane({ onActivateFile, onActivateFolder, onChangeCwd
       <ViewSwitch
         filesLabel={r.aria}
         onSelect={setRightSidebarView}
+        reviewCount={pendingEditCount}
+        reviewLabel={t.review.tab}
         sourceControlLabel={t.sourceControl.tab}
         view={view}
       />
 
       {view === 'source-control' ? (
         <SourceControlPanel />
+      ) : view === 'review' ? (
+        <ReviewPanel />
       ) : (
         <>
           <RemoteFolderPicker />
@@ -135,17 +142,20 @@ export function RightSidebarPane({ onActivateFile, onActivateFolder, onChangeCwd
 
 interface ViewSwitchProps {
   filesLabel: string
-  onSelect: (view: 'files' | 'source-control') => void
+  onSelect: (view: RightSidebarView) => void
+  reviewCount: number
+  reviewLabel: string
   sourceControlLabel: string
-  view: 'files' | 'source-control'
+  view: RightSidebarView
 }
 
-// Compact VS Code-style activity switch between the file tree and source
-// control, pinned at the top of the shared right-sidebar pane.
-function ViewSwitch({ onSelect, sourceControlLabel, view }: ViewSwitchProps) {
-  const items: { id: 'files' | 'source-control'; icon: string; label: string }[] = [
+// Compact VS Code-style activity switch between the file tree, source control,
+// and agent edit review, pinned at the top of the shared right-sidebar pane.
+function ViewSwitch({ onSelect, reviewCount, reviewLabel, sourceControlLabel, view }: ViewSwitchProps) {
+  const items: { id: RightSidebarView; icon: string; label: string; badge?: number }[] = [
     { id: 'files', icon: 'files', label: 'Files' },
-    { id: 'source-control', icon: 'source-control', label: sourceControlLabel }
+    { id: 'source-control', icon: 'source-control', label: sourceControlLabel },
+    { id: 'review', icon: 'git-pull-request', label: reviewLabel, badge: reviewCount }
   ]
 
   return (
@@ -155,7 +165,7 @@ function ViewSwitch({ onSelect, sourceControlLabel, view }: ViewSwitchProps) {
           aria-label={item.label}
           aria-pressed={view === item.id}
           className={cn(
-            'grid size-6 place-items-center rounded-md transition-colors',
+            'relative grid size-6 place-items-center rounded-md transition-colors',
             view === item.id
               ? 'bg-(--ui-control-hover-background) text-foreground'
               : 'text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground'
@@ -165,6 +175,11 @@ function ViewSwitch({ onSelect, sourceControlLabel, view }: ViewSwitchProps) {
           type="button"
         >
           <Codicon name={item.icon} size="0.85rem" />
+          {item.badge ? (
+            <span className="absolute -right-0.5 -top-0.5 grid h-3 min-w-3 place-items-center rounded-full bg-(--ui-accent,#3b82f6) px-0.5 text-[0.55rem] font-bold leading-none text-white">
+              {item.badge > 9 ? '9+' : item.badge}
+            </span>
+          ) : null}
         </button>
       ))}
     </div>

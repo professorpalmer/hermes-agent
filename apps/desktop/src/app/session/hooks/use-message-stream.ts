@@ -27,6 +27,7 @@ import {
 import { triggerHaptic } from '@/lib/haptics'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { parseTodos } from '@/lib/todos'
+import { recordPendingEdit } from '@/store/agent-edits'
 import { setClarifyRequest } from '@/store/clarify'
 import { setSessionCompacting } from '@/store/compaction'
 import { refreshBackgroundProcesses } from '@/store/composer-status'
@@ -926,6 +927,26 @@ export function useMessageStream({
 
         if (typeof payload?.inline_diff === 'string' && payload.inline_diff.trim()) {
           recordToolDiff(payload.tool_id || payload.name || '', payload.inline_diff)
+
+          // Capture file-mutating tools into the agent edit-review queue so the
+          // user can accept/reject them (Cursor-style). The edit already landed
+          // on disk; this is the review layer over the working tree.
+          if (sessionId && (payload.name === 'patch' || payload.name === 'write_file')) {
+            const args = (payload.args ?? {}) as Record<string, unknown>
+            const editPath = typeof args.path === 'string' ? args.path : ''
+
+            if (editPath) {
+              recordPendingEdit(sessionId, {
+                toolId: payload.tool_id || editPath,
+                tool: payload.name,
+                path: editPath,
+                diff: payload.inline_diff,
+                // write_file to a path with no `old_string`/prior content is a
+                // create; the gateway diff starts the file from /dev/null.
+                isNew: /^---\s+\/dev\/null/m.test(payload.inline_diff) || /^new file/m.test(payload.inline_diff)
+              })
+            }
+          }
         }
       } else if (SUBAGENT_EVENT_TYPES.has(event.type)) {
         if (sessionId && payload && !sessionInterrupted(sessionId)) {

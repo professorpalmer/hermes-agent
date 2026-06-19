@@ -1327,6 +1327,16 @@ export interface Translations {
     history: string
   }
 
+  review: {
+    tab: string
+    emptyTitle: string
+    emptyBody: string
+    pendingCount: (n: number) => string
+    accept: string
+    reject: string
+    acceptAll: string
+    rejectAll: string
+  }
   preview: {
     tab: string
     closeTab: (label: string) => string
