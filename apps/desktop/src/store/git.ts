@@ -203,6 +203,184 @@ export async function fetchDiff(filePath: string, staged: boolean): Promise<stri
   }
 }
 
+// ─── Branches ────────────────────────────────────────────────────────────────
+
+export interface GitBranch {
+  name: string
+  current: boolean
+  upstream: string | null
+  ahead: number
+  behind: number
+  sha: string
+  subject: string
+}
+
+export const $gitBranches = atom<{ local: GitBranch[]; remote: GitBranch[] }>({ local: [], remote: [] })
+
+export async function refreshBranches(): Promise<void> {
+  const api = gitApi()
+  const cwd = currentCwd()
+
+  if (!api?.branches || !cwd) {
+    $gitBranches.set({ local: [], remote: [] })
+
+    return
+  }
+
+  try {
+    const result = await api.branches(cwd)
+
+    if (result.ok) {
+      $gitBranches.set({ local: (result.local ?? []) as GitBranch[], remote: (result.remote ?? []) as GitBranch[] })
+    }
+  } catch {
+    /* leave previous */
+  }
+}
+
+export function checkoutBranch(branch: string) {
+  return mutate(cwd => gitApi()!.checkout(cwd, branch)).then(async ok => {
+    await refreshBranches()
+
+    return ok
+  })
+}
+
+export function createBranch(name: string, startPoint?: string) {
+  return mutate(cwd => gitApi()!.createBranch(cwd, name, startPoint ? { startPoint } : undefined)).then(async ok => {
+    await refreshBranches()
+
+    return ok
+  })
+}
+
+export function deleteBranch(name: string, force = false) {
+  return mutate(cwd => gitApi()!.deleteBranch(cwd, name, { force })).then(async ok => {
+    await refreshBranches()
+
+    return ok
+  })
+}
+
+export function fetchRemote() {
+  return mutate(cwd => gitApi()!.fetch(cwd)).then(async ok => {
+    await refreshBranches()
+
+    return ok
+  })
+}
+
+// ─── Log / history ───────────────────────────────────────────────────────────
+
+export interface GitCommit {
+  sha: string
+  shortSha: string
+  author: string
+  authorEmail: string
+  date: string
+  relativeDate: string
+  subject: string
+}
+
+export const $gitLog = atom<GitCommit[]>([])
+
+export async function refreshLog(limit = 50): Promise<void> {
+  const api = gitApi()
+  const cwd = currentCwd()
+
+  if (!api?.log || !cwd) {
+    $gitLog.set([])
+
+    return
+  }
+
+  try {
+    const result = await api.log(cwd, { limit })
+
+    if (result.ok) {
+      $gitLog.set((result.commits ?? []) as GitCommit[])
+    }
+  } catch {
+    /* leave previous */
+  }
+}
+
+export async function fetchCommitDiff(sha: string): Promise<string> {
+  const api = gitApi()
+  const cwd = currentCwd()
+
+  if (!api?.commitDiff || !cwd) {
+    return ''
+  }
+
+  try {
+    const result = await api.commitDiff(cwd, sha)
+
+    return result.ok ? (result.diff ?? '') : ''
+  } catch {
+    return ''
+  }
+}
+
+// ─── Stash ───────────────────────────────────────────────────────────────────
+
+export interface GitStash {
+  ref: string
+  subject: string
+}
+
+export const $gitStashes = atom<GitStash[]>([])
+
+export async function refreshStashes(): Promise<void> {
+  const api = gitApi()
+  const cwd = currentCwd()
+
+  if (!api?.stashList || !cwd) {
+    $gitStashes.set([])
+
+    return
+  }
+
+  try {
+    const result = await api.stashList(cwd)
+
+    if (result.ok) {
+      $gitStashes.set((result.stashes ?? []) as GitStash[])
+    }
+  } catch {
+    /* leave previous */
+  }
+}
+
+export function stashPush(options?: { includeUntracked?: boolean; message?: string }) {
+  return mutate(cwd => gitApi()!.stashPush(cwd, options)).then(async ok => {
+    await refreshStashes()
+
+    return ok
+  })
+}
+
+export function stashAction(action: 'apply' | 'drop' | 'pop', ref: string) {
+  return mutate(cwd => gitApi()!.stashAction(cwd, action, ref)).then(async ok => {
+    await refreshStashes()
+
+    return ok
+  })
+}
+
+// ─── Hunk-level staging ──────────────────────────────────────────────────────
+
+// Stage (reverse=false) or unstage (reverse=true) a single hunk via an
+// apply-able patch fragment built by lib/git-diff.buildHunkPatch.
+export function applyHunk(patch: string, reverse: boolean) {
+  return mutate(cwd => gitApi()!.applyHunk(cwd, patch, { reverse }))
+}
+
+// Refresh everything the panel shows (status + branches + log + stashes).
+export async function refreshAll(): Promise<void> {
+  await Promise.all([refreshGitStatus(), refreshBranches(), refreshLog(), refreshStashes()])
+}
+
 // Refresh whenever the active workspace cwd changes.
 let lastCwd = ''
 $currentCwd.subscribe(cwd => {
@@ -211,5 +389,6 @@ $currentCwd.subscribe(cwd => {
   if (next !== lastCwd) {
     lastCwd = next
     void refreshGitStatus()
+    void refreshBranches()
   }
 })

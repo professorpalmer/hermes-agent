@@ -1321,6 +1321,24 @@ export interface Translations {
     pull: string
     publish: string
     refresh: string
+    backToChanges: string
+    loadingDiff: string
+    binaryFile: string
+    stageHunk: string
+    unstageHunk: string
+    switchBranch: string
+    filterBranches: string
+    remoteBranches: string
+    newBranchName: string
+    create: string
+    createBranch: string
+    deleteBranch: string
+    fetch: string
+    stash: string
+    stashes: string
+    stashPop: string
+    stashDrop: string
+    history: string
   }
 
   preview: {

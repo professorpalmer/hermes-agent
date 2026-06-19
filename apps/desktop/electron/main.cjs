@@ -52,7 +52,18 @@ const {
   gitDiscardForIpc,
   gitCommitForIpc,
   gitPushForIpc,
-  gitPullForIpc
+  gitPullForIpc,
+  gitFetchForIpc,
+  gitBranchesForIpc,
+  gitCheckoutForIpc,
+  gitCreateBranchForIpc,
+  gitDeleteBranchForIpc,
+  gitLogForIpc,
+  gitCommitDiffForIpc,
+  gitStashListForIpc,
+  gitStashPushForIpc,
+  gitStashActionForIpc,
+  gitApplyHunkForIpc
 } = require('./git-scm.cjs')
 const { worktreesForIpc } = require('./git-worktrees.cjs')
 const { OFFICIAL_REPO_HTTPS_URL, isOfficialSshRemote } = require('./update-remote.cjs')
@@ -6069,6 +6080,29 @@ ipcMain.handle('hermes:git:push', async (_event, cwd, options) =>
   gitPushForIpc(resolveGitBinary(), cwd, options || {})
 )
 ipcMain.handle('hermes:git:pull', async (_event, cwd) => gitPullForIpc(resolveGitBinary(), cwd))
+ipcMain.handle('hermes:git:fetch', async (_event, cwd) => gitFetchForIpc(resolveGitBinary(), cwd))
+ipcMain.handle('hermes:git:branches', async (_event, cwd) => gitBranchesForIpc(resolveGitBinary(), cwd))
+ipcMain.handle('hermes:git:checkout', async (_event, cwd, branch) =>
+  gitCheckoutForIpc(resolveGitBinary(), cwd, branch)
+)
+ipcMain.handle('hermes:git:createBranch', async (_event, cwd, name, options) =>
+  gitCreateBranchForIpc(resolveGitBinary(), cwd, name, options || {})
+)
+ipcMain.handle('hermes:git:deleteBranch', async (_event, cwd, name, options) =>
+  gitDeleteBranchForIpc(resolveGitBinary(), cwd, name, options || {})
+)
+ipcMain.handle('hermes:git:log', async (_event, cwd, options) => gitLogForIpc(resolveGitBinary(), cwd, options || {}))
+ipcMain.handle('hermes:git:commitDiff', async (_event, cwd, sha) => gitCommitDiffForIpc(resolveGitBinary(), cwd, sha))
+ipcMain.handle('hermes:git:stashList', async (_event, cwd) => gitStashListForIpc(resolveGitBinary(), cwd))
+ipcMain.handle('hermes:git:stashPush', async (_event, cwd, options) =>
+  gitStashPushForIpc(resolveGitBinary(), cwd, options || {})
+)
+ipcMain.handle('hermes:git:stashAction', async (_event, cwd, action, ref) =>
+  gitStashActionForIpc(resolveGitBinary(), cwd, action, ref)
+)
+ipcMain.handle('hermes:git:applyHunk', async (_event, cwd, patch, options) =>
+  gitApplyHunkForIpc(resolveGitBinary(), cwd, patch, options || {})
+)
 
 ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
   if (!nodePty) {

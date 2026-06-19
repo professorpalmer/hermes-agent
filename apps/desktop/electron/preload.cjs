@@ -64,7 +64,18 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     discard: (cwd, paths) => ipcRenderer.invoke('hermes:git:discard', cwd, paths),
     commit: (cwd, message, options) => ipcRenderer.invoke('hermes:git:commit', cwd, message, options),
     push: (cwd, options) => ipcRenderer.invoke('hermes:git:push', cwd, options),
-    pull: cwd => ipcRenderer.invoke('hermes:git:pull', cwd)
+    pull: cwd => ipcRenderer.invoke('hermes:git:pull', cwd),
+    fetch: cwd => ipcRenderer.invoke('hermes:git:fetch', cwd),
+    branches: cwd => ipcRenderer.invoke('hermes:git:branches', cwd),
+    checkout: (cwd, branch) => ipcRenderer.invoke('hermes:git:checkout', cwd, branch),
+    createBranch: (cwd, name, options) => ipcRenderer.invoke('hermes:git:createBranch', cwd, name, options),
+    deleteBranch: (cwd, name, options) => ipcRenderer.invoke('hermes:git:deleteBranch', cwd, name, options),
+    log: (cwd, options) => ipcRenderer.invoke('hermes:git:log', cwd, options),
+    commitDiff: (cwd, sha) => ipcRenderer.invoke('hermes:git:commitDiff', cwd, sha),
+    stashList: cwd => ipcRenderer.invoke('hermes:git:stashList', cwd),
+    stashPush: (cwd, options) => ipcRenderer.invoke('hermes:git:stashPush', cwd, options),
+    stashAction: (cwd, action, ref) => ipcRenderer.invoke('hermes:git:stashAction', cwd, action, ref),
+    applyHunk: (cwd, patch, options) => ipcRenderer.invoke('hermes:git:applyHunk', cwd, patch, options)
   },
   terminal: {
     dispose: id => ipcRenderer.invoke('hermes:terminal:dispose', id),

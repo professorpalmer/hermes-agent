@@ -2,12 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   $gitAvailable,
+  $gitBranches,
   $gitError,
+  $gitLog,
+  $gitStashes,
   $gitStatus,
+  applyHunk,
+  checkoutBranch,
   commit,
+  createBranch,
+  refreshBranches,
   refreshGitStatus,
+  refreshLog,
+  refreshStashes,
   stageAll,
   stageFiles,
+  stashAction,
   unstageFiles
 } from './git'
 import { $currentCwd } from './session'
@@ -23,6 +33,17 @@ function installGitApi(overrides: Partial<Record<string, ReturnType<typeof vi.fn
     commit: vi.fn().mockResolvedValue({ ok: true }),
     push: vi.fn().mockResolvedValue({ ok: true }),
     pull: vi.fn().mockResolvedValue({ ok: true }),
+    fetch: vi.fn().mockResolvedValue({ ok: true }),
+    branches: vi.fn().mockResolvedValue({ ok: true, current: 'main', local: [], remote: [] }),
+    checkout: vi.fn().mockResolvedValue({ ok: true }),
+    createBranch: vi.fn().mockResolvedValue({ ok: true }),
+    deleteBranch: vi.fn().mockResolvedValue({ ok: true }),
+    log: vi.fn().mockResolvedValue({ ok: true, commits: [] }),
+    commitDiff: vi.fn().mockResolvedValue({ ok: true, diff: '' }),
+    stashList: vi.fn().mockResolvedValue({ ok: true, stashes: [] }),
+    stashPush: vi.fn().mockResolvedValue({ ok: true }),
+    stashAction: vi.fn().mockResolvedValue({ ok: true }),
+    applyHunk: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides
   }
 
@@ -172,5 +193,82 @@ describe('mutations refresh afterward', () => {
 
     expect(ok).toBe(false)
     expect($gitError.get()).toBe('nothing to unstage')
+  })
+})
+
+describe('branches', () => {
+  it('refreshBranches populates local + remote', async () => {
+    installGitApi({
+      branches: vi.fn().mockResolvedValue({
+        ok: true,
+        current: 'main',
+        local: [{ name: 'main', current: true, ahead: 0, behind: 0, sha: 'abc', subject: 's' }],
+        remote: [{ name: 'origin/main', current: false, ahead: 0, behind: 0, sha: 'abc', subject: 's' }]
+      })
+    })
+
+    await refreshBranches()
+
+    expect($gitBranches.get().local.map(b => b.name)).toEqual(['main'])
+    expect($gitBranches.get().remote.map(b => b.name)).toEqual(['origin/main'])
+  })
+
+  it('checkoutBranch calls the api and refreshes branches', async () => {
+    const api = installGitApi({ status: vi.fn().mockResolvedValue(statusPayload()) })
+
+    const ok = await checkoutBranch('dev')
+
+    expect(ok).toBe(true)
+    expect(api.checkout).toHaveBeenCalledWith(REPO, 'dev')
+    expect(api.branches).toHaveBeenCalled()
+  })
+
+  it('createBranch forwards startPoint when given', async () => {
+    const api = installGitApi({ status: vi.fn().mockResolvedValue(statusPayload()) })
+
+    await createBranch('feature/x', 'main')
+
+    expect(api.createBranch).toHaveBeenCalledWith(REPO, 'feature/x', { startPoint: 'main' })
+  })
+})
+
+describe('log + stash + hunk', () => {
+  it('refreshLog populates commits', async () => {
+    installGitApi({
+      log: vi.fn().mockResolvedValue({
+        ok: true,
+        commits: [{ sha: 'a', shortSha: 'a', author: 'me', authorEmail: 'e', date: 'd', relativeDate: 'now', subject: 'first' }]
+      })
+    })
+
+    await refreshLog()
+
+    expect($gitLog.get().map(c => c.subject)).toEqual(['first'])
+  })
+
+  it('refreshStashes populates stashes', async () => {
+    installGitApi({
+      stashList: vi.fn().mockResolvedValue({ ok: true, stashes: [{ ref: 'stash@{0}', subject: 'wip' }] })
+    })
+
+    await refreshStashes()
+
+    expect($gitStashes.get().map(s => s.ref)).toEqual(['stash@{0}'])
+  })
+
+  it('stashAction forwards action + ref', async () => {
+    const api = installGitApi({ status: vi.fn().mockResolvedValue(statusPayload()) })
+
+    await stashAction('pop', 'stash@{0}')
+
+    expect(api.stashAction).toHaveBeenCalledWith(REPO, 'pop', 'stash@{0}')
+  })
+
+  it('applyHunk forwards the patch + reverse flag', async () => {
+    const api = installGitApi({ status: vi.fn().mockResolvedValue(statusPayload()) })
+
+    await applyHunk('@@ patch @@', true)
+
+    expect(api.applyHunk).toHaveBeenCalledWith(REPO, '@@ patch @@', { reverse: true })
   })
 })

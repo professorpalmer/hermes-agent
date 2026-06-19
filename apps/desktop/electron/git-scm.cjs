@@ -314,6 +314,251 @@ async function gitPullForIpc(gitBinary, cwd) {
   return { ok: true, output: (res.stdout || res.stderr).trim() }
 }
 
+async function gitFetchForIpc(gitBinary, cwd) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+
+  const res = await runGit(gitBinary, root, ['fetch', '--prune'], { timeout: 120_000 })
+  if (res.code !== 0) {
+    return { ok: false, error: (res.stderr || res.stdout).trim() || 'fetch-failed' }
+  }
+  return { ok: true, output: (res.stderr || res.stdout).trim() }
+}
+
+// ─── Branches ────────────────────────────────────────────────────────────────
+
+// List local + remote branches via for-each-ref (-z NUL-delimited, scriptable
+// format). Returns { ok, current, local[], remote[] } where each branch entry
+// is { name, current, upstream, ahead, behind, sha, subject }.
+async function gitBranchesForIpc(gitBinary, cwd) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+
+  // Fields joined by \x1f (unit sep); records by \x00 so subjects/names with
+  // spaces survive intact.
+  const fmt =
+    '%(refname)%1f%(refname:short)%1f%(HEAD)%1f%(upstream:short)%1f%(upstream:track)%1f%(objectname:short)%1f%(contents:subject)%00'
+  const res = await runGit(gitBinary, root, [
+    'for-each-ref',
+    '--format=' + fmt,
+    'refs/heads',
+    'refs/remotes'
+  ])
+  if (res.code !== 0) return { ok: false, error: res.stderr.trim() || 'branches-failed' }
+
+  const local = []
+  const remote = []
+  let current = null
+
+  for (const rec of res.stdout.split('\u0000')) {
+    if (!rec.trim()) continue
+    const [refname, short, head, upstream, track, sha, subject] = rec.split('\u001f')
+    if (refname === 'refs/stash') continue
+
+    // Parse "[ahead 2, behind 1]" style upstream:track tokens.
+    let ahead = 0
+    let behind = 0
+    const aMatch = /ahead (\d+)/.exec(track || '')
+    const bMatch = /behind (\d+)/.exec(track || '')
+    if (aMatch) ahead = parseInt(aMatch[1], 10) || 0
+    if (bMatch) behind = parseInt(bMatch[1], 10) || 0
+
+    const entry = {
+      name: short,
+      current: head === '*',
+      upstream: upstream || null,
+      ahead,
+      behind,
+      sha: sha || '',
+      subject: subject || ''
+    }
+
+    if (refname.startsWith('refs/remotes/')) {
+      // Skip the symbolic "origin/HEAD" pointer.
+      if (/\/HEAD$/.test(refname)) continue
+      remote.push(entry)
+    } else {
+      if (entry.current) current = entry.name
+      local.push(entry)
+    }
+  }
+
+  return { ok: true, current, local, remote }
+}
+
+async function gitCheckoutForIpc(gitBinary, cwd, branch) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+  if (typeof branch !== 'string' || !branch.trim()) return { ok: false, error: 'bad-branch' }
+
+  // `git switch` is the modern checkout; tracks a remote branch automatically
+  // when the name matches a single remote (e.g. switching to origin/feature).
+  let res = await runGit(gitBinary, root, ['switch', '--', branch.trim()])
+  if (res.code !== 0 && /unknown|not a git command|usage/i.test(res.stderr)) {
+    res = await runGit(gitBinary, root, ['checkout', branch.trim()])
+  }
+  if (res.code !== 0) return { ok: false, error: (res.stderr || res.stdout).trim() || 'checkout-failed' }
+  return { ok: true, output: (res.stderr || res.stdout).trim() }
+}
+
+async function gitCreateBranchForIpc(gitBinary, cwd, name, options = {}) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+  if (typeof name !== 'string' || !name.trim()) return { ok: false, error: 'bad-branch' }
+
+  // -c creates + switches. A startPoint (sha/branch) is optional.
+  const args = ['switch', '-c', name.trim()]
+  if (options.startPoint && typeof options.startPoint === 'string') {
+    args.push(options.startPoint.trim())
+  }
+
+  let res = await runGit(gitBinary, root, args)
+  if (res.code !== 0 && /unknown|not a git command|usage/i.test(res.stderr)) {
+    const legacy = ['checkout', '-b', name.trim()]
+    if (options.startPoint) legacy.push(options.startPoint.trim())
+    res = await runGit(gitBinary, root, legacy)
+  }
+  if (res.code !== 0) return { ok: false, error: (res.stderr || res.stdout).trim() || 'create-branch-failed' }
+  return { ok: true, output: (res.stderr || res.stdout).trim() }
+}
+
+async function gitDeleteBranchForIpc(gitBinary, cwd, name, options = {}) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+  if (typeof name !== 'string' || !name.trim()) return { ok: false, error: 'bad-branch' }
+
+  const flag = options.force ? '-D' : '-d'
+  const res = await runGit(gitBinary, root, ['branch', flag, '--', name.trim()])
+  if (res.code !== 0) return { ok: false, error: (res.stderr || res.stdout).trim() || 'delete-branch-failed' }
+  return { ok: true, output: res.stdout.trim() }
+}
+
+// ─── Log / history ───────────────────────────────────────────────────────────
+
+// Recent commits. Returns { ok, commits[] } with { sha, shortSha, author,
+// authorEmail, date (ISO), relativeDate, subject }.
+async function gitLogForIpc(gitBinary, cwd, options = {}) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+
+  const limit = Math.min(Math.max(parseInt(options.limit, 10) || 50, 1), 500)
+  // \x1f field sep, \x00 record sep — survives multi-line/odd subjects.
+  const fmt = '%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%ar%x1f%s%x00'
+  const res = await runGit(gitBinary, root, ['log', `--max-count=${limit}`, '--format=' + fmt])
+  if (res.code !== 0) return { ok: false, error: res.stderr.trim() || 'log-failed' }
+
+  const commits = []
+  for (const rec of res.stdout.split('\u0000')) {
+    if (!rec.trim()) continue
+    const [sha, shortSha, author, authorEmail, date, relativeDate, subject] = rec.replace(/^\n/, '').split('\u001f')
+    if (!sha) continue
+    commits.push({ sha, shortSha, author, authorEmail, date, relativeDate, subject })
+  }
+
+  return { ok: true, commits }
+}
+
+// Full diff for one commit (against its first parent).
+async function gitCommitDiffForIpc(gitBinary, cwd, sha) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+  if (typeof sha !== 'string' || !/^[0-9a-fA-F]{4,64}$/.test(sha.trim())) {
+    return { ok: false, error: 'bad-sha' }
+  }
+
+  const res = await runGit(gitBinary, root, ['show', '--no-color', '--format=fuller', sha.trim()])
+  if (res.code !== 0) return { ok: false, error: res.stderr.trim() || 'commit-diff-failed' }
+  return { ok: true, diff: res.stdout }
+}
+
+// ─── Stash ───────────────────────────────────────────────────────────────────
+
+async function gitStashListForIpc(gitBinary, cwd) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+
+  const res = await runGit(gitBinary, root, ['stash', 'list', '--format=%gd%x1f%s%x00'])
+  if (res.code !== 0) return { ok: false, error: res.stderr.trim() || 'stash-list-failed' }
+
+  const stashes = []
+  for (const rec of res.stdout.split('\u0000')) {
+    if (!rec.trim()) continue
+    const [ref, subject] = rec.replace(/^\n/, '').split('\u001f')
+    if (!ref) continue
+    stashes.push({ ref, subject: subject || '' })
+  }
+
+  return { ok: true, stashes }
+}
+
+async function gitStashPushForIpc(gitBinary, cwd, options = {}) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+
+  const args = ['stash', 'push']
+  if (options.includeUntracked) args.push('--include-untracked')
+  if (options.message && typeof options.message === 'string') args.push('-m', options.message)
+
+  const res = await runGit(gitBinary, root, args)
+  if (res.code !== 0) return { ok: false, error: (res.stderr || res.stdout).trim() || 'stash-failed' }
+  return { ok: true, output: res.stdout.trim() }
+}
+
+// Apply/pop/drop a stash by ref. `action` ∈ {apply, pop, drop}.
+async function gitStashActionForIpc(gitBinary, cwd, action, ref) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+  if (!['apply', 'pop', 'drop'].includes(action)) return { ok: false, error: 'bad-action' }
+  // Stash refs look like "stash@{0}" — validate to keep them off the arg line raw.
+  const cleanRef = typeof ref === 'string' && /^stash@\{\d+\}$/.test(ref.trim()) ? ref.trim() : null
+
+  const args = ['stash', action]
+  if (cleanRef) args.push(cleanRef)
+
+  const res = await runGit(gitBinary, root, args)
+  if (res.code !== 0) return { ok: false, error: (res.stderr || res.stdout).trim() || 'stash-action-failed' }
+  return { ok: true, output: res.stdout.trim() }
+}
+
+// ─── Hunk-level staging (apply a patch fragment to the index) ────────────────
+
+// Stage or unstage a single diff hunk. The renderer sends the exact unified-diff
+// patch text (file header + one @@ hunk). We pipe it to `git apply --cached`
+// (stage) or `--cached --reverse` (unstage). Writing the patch to a temp file
+// keeps it off the arg line and shell entirely.
+async function gitApplyHunkForIpc(gitBinary, cwd, patch, options = {}) {
+  const root = resolveRepoRoot(cwd)
+  if (!root) return { ok: false, error: 'not-a-repo' }
+  if (typeof patch !== 'string' || !patch.trim()) return { ok: false, error: 'empty-patch' }
+
+  const os = require('node:os')
+  const fs = require('node:fs')
+  const nodePath = require('node:path')
+
+  // git apply is whitespace-sensitive and wants a trailing newline.
+  const body = patch.endsWith('\n') ? patch : patch + '\n'
+  const tmp = nodePath.join(os.tmpdir(), `hermes-hunk-${Date.now()}-${Math.random().toString(36).slice(2)}.patch`)
+
+  try {
+    fs.writeFileSync(tmp, body, 'utf8')
+    const args = ['apply', '--cached', '--whitespace=nowarn']
+    if (options.reverse) args.push('--reverse')
+    args.push(tmp)
+
+    const res = await runGit(gitBinary, root, args)
+    if (res.code !== 0) return { ok: false, error: (res.stderr || res.stdout).trim() || 'apply-hunk-failed' }
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  } finally {
+    try {
+      fs.unlinkSync(tmp)
+    } catch {
+      // best effort
+    }
+  }
+}
+
 // Strip dangerous / empty entries and option-like leading dashes (defense in
 // depth — every call already uses `--` before pathspecs).
 function sanitizePaths(paths) {
@@ -340,6 +585,17 @@ module.exports = {
   gitCommitForIpc,
   gitPushForIpc,
   gitPullForIpc,
+  gitFetchForIpc,
+  gitBranchesForIpc,
+  gitCheckoutForIpc,
+  gitCreateBranchForIpc,
+  gitDeleteBranchForIpc,
+  gitLogForIpc,
+  gitCommitDiffForIpc,
+  gitStashListForIpc,
+  gitStashPushForIpc,
+  gitStashActionForIpc,
+  gitApplyHunkForIpc,
   // exported for tests
   _runGit: runGit
 }

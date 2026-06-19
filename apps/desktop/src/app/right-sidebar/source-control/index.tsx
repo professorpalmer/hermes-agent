@@ -8,23 +8,33 @@ import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import {
   $gitAvailable,
+  $gitBranches,
   $gitBusy,
   $gitError,
   $gitLoaded,
+  $gitLog,
+  $gitStashes,
   $gitStatus,
   commit,
   discardFiles,
   type GitFile,
   pull,
   push,
+  refreshAll,
   refreshGitStatus,
+  refreshLog,
+  refreshStashes,
   stageAll,
   stageFiles,
+  stashAction,
+  stashPush,
   unstageAll,
   unstageFiles
 } from '@/store/git'
 
-// Single-letter status badge + tone, mirroring git's own M/A/D/R/U/? glyphs.
+import { BranchPicker } from './branch-picker'
+import { DiffViewer } from './diff-viewer'
+
 const STATUS_BADGE: Record<GitFile['status'], { letter: string; tone: string }> = {
   added: { letter: 'A', tone: 'text-emerald-500' },
   conflicted: { letter: '!', tone: 'text-amber-500' },
@@ -47,26 +57,33 @@ function dirname(p: string): string {
   return parts.join('/')
 }
 
+// What's open in the diff viewer overlay.
+type DiffSelection =
+  | { kind: 'file'; path: string; staged: boolean }
+  | { kind: 'commit'; sha: string; subject: string }
+  | null
+
 interface FileRowProps {
   file: GitFile
   busy: boolean
   primaryIcon: string
   primaryLabel: string
   onPrimary: () => void
+  onOpen: () => void
   onDiscard?: () => void
   discardLabel?: string
 }
 
-function FileRow({ file, busy, primaryIcon, primaryLabel, onPrimary, onDiscard, discardLabel }: FileRowProps) {
+function FileRow({ file, busy, primaryIcon, primaryLabel, onPrimary, onOpen, onDiscard, discardLabel }: FileRowProps) {
   const badge = STATUS_BADGE[file.status]
   const dir = dirname(file.path)
 
   return (
     <div className="group/row flex h-6 items-center gap-1.5 rounded-sm px-1.5 hover:bg-(--ui-control-hover-background)">
-      <span className="min-w-0 flex-1 truncate text-[0.72rem] leading-5">
-        <span className="text-foreground">{basename(file.path)}</span>
-        {dir && <span className="ml-1.5 text-[0.62rem] text-muted-foreground/55">{dir}</span>}
-      </span>
+      <button className="flex min-w-0 flex-1 items-center text-left" onClick={onOpen} type="button">
+        <span className="truncate text-[0.72rem] leading-5 text-foreground">{basename(file.path)}</span>
+        {dir && <span className="ml-1.5 truncate text-[0.62rem] text-muted-foreground/55">{dir}</span>}
+      </button>
 
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100">
         {onDiscard && (
@@ -106,17 +123,24 @@ interface SectionProps {
   title: string
   count: number
   action?: { icon: string; label: string; onClick: () => void }
+  collapsed?: boolean
+  onToggle?: () => void
   children: React.ReactNode
 }
 
-function Section({ title, count, action, children }: SectionProps) {
+function Section({ title, count, action, collapsed, onToggle, children }: SectionProps) {
   if (count === 0) {
     return null
   }
 
   return (
     <div className="mb-1">
-      <div className="group/sec flex h-6 items-center gap-1.5 px-1.5">
+      <div className="group/sec flex h-6 items-center gap-1 px-1.5">
+        {onToggle && (
+          <button aria-label={title} className="grid size-4 place-items-center text-muted-foreground/60" onClick={onToggle} type="button">
+            <Codicon name={collapsed ? 'chevron-right' : 'chevron-down'} size="0.7rem" />
+          </button>
+        )}
         <span className="flex-1 text-[0.62rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground/70">
           {title}
         </span>
@@ -136,16 +160,17 @@ function Section({ title, count, action, children }: SectionProps) {
           {count}
         </span>
       </div>
-      <div className="px-0.5">{children}</div>
+      {!collapsed && <div className="px-0.5">{children}</div>}
     </div>
   )
 }
 
 /**
- * VS Code / Cursor-style Source Control panel: branch header with push/pull, a
- * commit box, and staged / changes / untracked / conflict sections with
- * per-file + bulk stage/unstage/discard. All git work happens in the main
- * process (electron/git-scm.cjs); this renders the $gitStatus snapshot.
+ * VS Code / Cursor-style Source Control panel. Branch picker + push/pull/fetch +
+ * stash in the header, a commit box, staged/changes/untracked/conflict sections
+ * with per-file and bulk stage/unstage/discard, plus collapsible History and
+ * Stashes sections. Clicking a file opens an inline diff viewer with per-hunk
+ * staging.
  */
 export function SourceControlPanel() {
   const { t } = useI18n()
@@ -155,10 +180,16 @@ export function SourceControlPanel() {
   const busy = useStore($gitBusy)
   const error = useStore($gitError)
   const loaded = useStore($gitLoaded)
+  const branches = useStore($gitBranches)
+  const log = useStore($gitLog)
+  const stashes = useStore($gitStashes)
   const [message, setMessage] = useState('')
+  const [diff, setDiff] = useState<DiffSelection>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [showStashes, setShowStashes] = useState(false)
 
   useEffect(() => {
-    void refreshGitStatus()
+    void refreshAll()
   }, [])
 
   const doCommit = useCallback(async () => {
@@ -185,6 +216,20 @@ export function SourceControlPanel() {
     )
   }
 
+  // Diff viewer takes over the whole panel when a file/commit is open.
+  if (diff) {
+    return (
+      <DiffViewer
+        commitSha={diff.kind === 'commit' ? diff.sha : undefined}
+        filePath={diff.kind === 'file' ? diff.path : undefined}
+        onChanged={() => void refreshGitStatus()}
+        onClose={() => setDiff(null)}
+        staged={diff.kind === 'file' ? diff.staged : undefined}
+        title={diff.kind === 'file' ? basename(diff.path) : diff.subject}
+      />
+    )
+  }
+
   const hasStaged = status.staged.length > 0
 
   const totalChanges =
@@ -192,12 +237,10 @@ export function SourceControlPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Branch header */}
-      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-(--ui-stroke-tertiary) px-2">
-        <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="git-branch" size="0.85rem" />
-        <span className="min-w-0 flex-1 truncate text-[0.72rem] font-medium text-foreground">
-          {status.branch ?? g.noBranch}
-        </span>
+      {/* Branch + sync header */}
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-(--ui-stroke-tertiary) px-1.5">
+        <BranchPicker busy={busy} current={branches.local.find(b => b.current)?.name ?? status.branch} />
+        <div className="flex-1" />
         {status.behind > 0 && (
           <span className="flex items-center gap-0.5 text-[0.62rem] text-muted-foreground/70">
             <Codicon name="arrow-down" size="0.62rem" />
@@ -210,39 +253,15 @@ export function SourceControlPanel() {
             {status.ahead}
           </span>
         )}
-        <Tip label={g.pull}>
-          <button
-            aria-label={g.pull}
-            className="grid size-5 place-items-center rounded-sm text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
-            disabled={busy}
-            onClick={() => void pull()}
-            type="button"
-          >
-            <Codicon name="arrow-down" size="0.8rem" />
-          </button>
-        </Tip>
-        <Tip label={status.upstream ? g.push : g.publish}>
-          <button
-            aria-label={status.upstream ? g.push : g.publish}
-            className="grid size-5 place-items-center rounded-sm text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
-            disabled={busy}
-            onClick={() => void push({ setUpstream: !status.upstream })}
-            type="button"
-          >
-            <Codicon name={status.upstream ? 'repo-push' : 'cloud-upload'} size="0.8rem" />
-          </button>
-        </Tip>
-        <Tip label={g.refresh}>
-          <button
-            aria-label={g.refresh}
-            className="grid size-5 place-items-center rounded-sm text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground"
-            disabled={busy}
-            onClick={() => void refreshGitStatus()}
-            type="button"
-          >
-            <Codicon name="refresh" size="0.8rem" spinning={busy} />
-          </button>
-        </Tip>
+        <HeaderButton busy={busy} icon="arrow-down" label={g.pull} onClick={() => void pull()} />
+        <HeaderButton
+          busy={busy}
+          icon={status.upstream ? 'repo-push' : 'cloud-upload'}
+          label={status.upstream ? g.push : g.publish}
+          onClick={() => void push({ setUpstream: !status.upstream })}
+        />
+        <HeaderButton busy={busy} icon="archive" label={g.stash} onClick={() => void stashPush()} />
+        <HeaderButton busy={busy} icon="refresh" label={g.refresh} onClick={() => void refreshAll()} spinning={busy} />
       </div>
 
       {/* Commit box */}
@@ -271,7 +290,7 @@ export function SourceControlPanel() {
         </Button>
       </div>
 
-      {/* File sections */}
+      {/* Sections */}
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {error && (
           <div className="mx-1.5 mb-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[0.66rem] leading-relaxed text-destructive">
@@ -280,7 +299,7 @@ export function SourceControlPanel() {
         )}
 
         {totalChanges === 0 && !error && (
-          <div className="grid place-items-center px-6 py-10 text-center text-[0.68rem] text-muted-foreground/60">
+          <div className="grid place-items-center px-6 py-6 text-center text-[0.68rem] text-muted-foreground/60">
             {g.noChanges}
           </div>
         )}
@@ -295,6 +314,7 @@ export function SourceControlPanel() {
               busy={busy}
               file={file}
               key={`staged:${file.path}`}
+              onOpen={() => setDiff({ kind: 'file', path: file.path, staged: true })}
               onPrimary={() => void unstageFiles([file.path])}
               primaryIcon="remove"
               primaryLabel={g.unstage}
@@ -312,6 +332,7 @@ export function SourceControlPanel() {
               busy={busy}
               file={file}
               key={`conflict:${file.path}`}
+              onOpen={() => setDiff({ kind: 'file', path: file.path, staged: false })}
               onPrimary={() => void stageFiles([file.path])}
               primaryIcon="add"
               primaryLabel={g.stage}
@@ -331,6 +352,7 @@ export function SourceControlPanel() {
               file={file}
               key={`unstaged:${file.path}`}
               onDiscard={() => void discardFiles([file.path])}
+              onOpen={() => setDiff({ kind: 'file', path: file.path, staged: false })}
               onPrimary={() => void stageFiles([file.path])}
               primaryIcon="add"
               primaryLabel={g.stage}
@@ -350,13 +372,121 @@ export function SourceControlPanel() {
               file={file}
               key={`untracked:${file.path}`}
               onDiscard={() => void discardFiles([file.path])}
+              onOpen={() => setDiff({ kind: 'file', path: file.path, staged: false })}
               onPrimary={() => void stageFiles([file.path])}
               primaryIcon="add"
               primaryLabel={g.stage}
             />
           ))}
         </Section>
+
+        {/* Stashes */}
+        <Section
+          collapsed={!showStashes}
+          count={stashes.length}
+          onToggle={() => {
+            setShowStashes(s => !s)
+            void refreshStashes()
+          }}
+          title={g.stashes}
+        >
+          {stashes.map(s => (
+            <div
+              className="group/st flex h-6 items-center gap-1.5 rounded-sm px-1.5 hover:bg-(--ui-control-hover-background)"
+              key={s.ref}
+            >
+              <Codicon className="shrink-0 text-(--ui-text-tertiary)" name="archive" size="0.7rem" />
+              <span className="min-w-0 flex-1 truncate text-[0.7rem] text-foreground">{s.subject}</span>
+              <div className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover/st:opacity-100">
+                <Tip label={g.stashPop}>
+                  <button
+                    aria-label={g.stashPop}
+                    className="grid size-5 place-items-center rounded-sm text-(--ui-text-tertiary) hover:bg-(--ui-bg-secondary) hover:text-foreground"
+                    onClick={() => void stashAction('pop', s.ref)}
+                    type="button"
+                  >
+                    <Codicon name="arrow-up" size="0.72rem" />
+                  </button>
+                </Tip>
+                <Tip label={g.stashDrop}>
+                  <button
+                    aria-label={g.stashDrop}
+                    className="grid size-5 place-items-center rounded-sm text-(--ui-text-tertiary) hover:bg-(--ui-bg-secondary) hover:text-destructive"
+                    onClick={() => void stashAction('drop', s.ref)}
+                    type="button"
+                  >
+                    <Codicon name="trash" size="0.72rem" />
+                  </button>
+                </Tip>
+              </div>
+            </div>
+          ))}
+        </Section>
+
+        {/* History */}
+        <div className="mt-1">
+          <button
+            className="flex h-6 w-full items-center gap-1 px-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground/70 hover:text-foreground"
+            onClick={() => {
+              setShowHistory(s => !s)
+              void refreshLog()
+            }}
+            type="button"
+          >
+            <Codicon name={showHistory ? 'chevron-down' : 'chevron-right'} size="0.7rem" />
+            <span className="flex-1 text-left">{g.history}</span>
+          </button>
+
+          {showHistory && (
+            <div className="px-0.5">
+              {log.length === 0 && (
+                <div className="px-2 py-2 text-[0.66rem] text-muted-foreground/50">{g.noChanges}</div>
+              )}
+              {log.map(commitItem => (
+                <button
+                  className="flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1 text-left hover:bg-(--ui-control-hover-background)"
+                  key={commitItem.sha}
+                  onClick={() => setDiff({ kind: 'commit', sha: commitItem.sha, subject: commitItem.subject })}
+                  type="button"
+                >
+                  <span className="w-full truncate text-[0.7rem] text-foreground">{commitItem.subject}</span>
+                  <span className="flex items-center gap-1.5 text-[0.6rem] text-muted-foreground/55">
+                    <span className="font-mono">{commitItem.shortSha}</span>
+                    <span>·</span>
+                    <span className="truncate">{commitItem.author}</span>
+                    <span>·</span>
+                    <span>{commitItem.relativeDate}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  )
+}
+
+interface HeaderButtonProps {
+  busy: boolean
+  icon: string
+  label: string
+  onClick: () => void
+  spinning?: boolean
+}
+
+function HeaderButton({ busy, icon, label, onClick, spinning }: HeaderButtonProps) {
+  return (
+    <Tip label={label}>
+      <button
+        aria-label={label}
+        className="grid size-5 place-items-center rounded-sm text-(--ui-text-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground disabled:opacity-40"
+        disabled={busy}
+        onClick={onClick}
+        type="button"
+      >
+        <Codicon name={icon} size="0.8rem" spinning={spinning} />
+      </button>
+    </Tip>
   )
 }

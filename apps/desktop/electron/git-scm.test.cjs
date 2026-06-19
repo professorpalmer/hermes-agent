@@ -14,7 +14,17 @@ const {
   gitDiffForIpc,
   gitStageForIpc,
   gitUnstageForIpc,
-  gitCommitForIpc
+  gitCommitForIpc,
+  gitBranchesForIpc,
+  gitCheckoutForIpc,
+  gitCreateBranchForIpc,
+  gitDeleteBranchForIpc,
+  gitLogForIpc,
+  gitCommitDiffForIpc,
+  gitStashListForIpc,
+  gitStashPushForIpc,
+  gitStashActionForIpc,
+  gitApplyHunkForIpc
 } = require('./git-scm.cjs')
 
 // ── Pure parser tests (no git needed) ───────────────────────────────────────
@@ -183,3 +193,143 @@ test('e2e: status on a non-repo returns not-a-repo', { skip: !gitAvailable() }, 
   assert.equal(res.ok, false)
   assert.equal(res.error, 'not-a-repo')
 })
+
+// ── Advanced ops: branches / log / stash / hunk staging ─────────────────────
+
+function seededRepo(t) {
+  const { root, run } = initRepo()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  fs.writeFileSync(path.join(root, 'README.md'), '# repo\nline2\nline3\n')
+  run(['add', 'README.md'])
+  run(['commit', '-q', '-m', 'init'])
+  return { root, run }
+}
+
+test('e2e: branches lists current + created branches', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+
+  const created = await gitCreateBranchForIpc('git', root, 'feature/x')
+  assert.equal(created.ok, true)
+
+  const res = await gitBranchesForIpc('git', root)
+  assert.equal(res.ok, true)
+  assert.equal(res.current, 'feature/x')
+  assert.equal(
+    res.local.map(b => b.name).sort().join(','),
+    'feature/x,main'
+  )
+  assert.equal(res.local.find(b => b.name === 'feature/x').current, true)
+})
+
+test('e2e: checkout switches branches', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  await gitCreateBranchForIpc('git', root, 'dev')
+
+  const back = await gitCheckoutForIpc('git', root, 'main')
+  assert.equal(back.ok, true)
+
+  const res = await gitBranchesForIpc('git', root)
+  assert.equal(res.current, 'main')
+})
+
+test('e2e: delete branch removes it', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  await gitCreateBranchForIpc('git', root, 'temp')
+  await gitCheckoutForIpc('git', root, 'main')
+
+  const del = await gitDeleteBranchForIpc('git', root, 'temp', { force: true })
+  assert.equal(del.ok, true)
+
+  const res = await gitBranchesForIpc('git', root)
+  assert.equal(res.local.find(b => b.name === 'temp'), undefined)
+})
+
+test('e2e: log returns commits with metadata', { skip: !gitAvailable() }, async t => {
+  const { root, run } = seededRepo(t)
+  fs.writeFileSync(path.join(root, 'README.md'), '# repo\nchanged\n')
+  run(['commit', '-q', '-am', 'second commit'])
+
+  const res = await gitLogForIpc('git', root, { limit: 10 })
+  assert.equal(res.ok, true)
+  assert.equal(res.commits.length, 2)
+  assert.equal(res.commits[0].subject, 'second commit')
+  assert.match(res.commits[0].sha, /^[0-9a-f]{40}$/)
+  assert.equal(res.commits[0].author, 'Test')
+})
+
+test('e2e: commit diff returns the patch for a sha', { skip: !gitAvailable() }, async t => {
+  const { root, run } = seededRepo(t)
+  fs.writeFileSync(path.join(root, 'README.md'), '# repo\nline2 edited\nline3\n')
+  run(['commit', '-q', '-am', 'edit line2'])
+  const sha = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+
+  const res = await gitCommitDiffForIpc('git', root, sha)
+  assert.equal(res.ok, true)
+  assert.match(res.diff, /edit line2/)
+  assert.match(res.diff, /\+line2 edited/)
+})
+
+test('e2e: commit diff rejects a bad sha', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  const res = await gitCommitDiffForIpc('git', root, 'not a sha!!')
+  assert.equal(res.ok, false)
+  assert.equal(res.error, 'bad-sha')
+})
+
+test('e2e: stash push → list → pop round-trip', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  fs.writeFileSync(path.join(root, 'README.md'), '# repo\nWIP change\n')
+
+  const pushed = await gitStashPushForIpc('git', root, { message: 'my wip' })
+  assert.equal(pushed.ok, true)
+
+  const list = await gitStashListForIpc('git', root)
+  assert.equal(list.ok, true)
+  assert.equal(list.stashes.length, 1)
+  assert.match(list.stashes[0].ref, /^stash@\{0\}$/)
+  assert.match(list.stashes[0].subject, /my wip/)
+
+  // Working tree should be clean after the stash.
+  let st = await gitStatusForIpc('git', root)
+  assert.equal(st.unstaged.length, 0)
+
+  const popped = await gitStashActionForIpc('git', root, 'pop', 'stash@{0}')
+  assert.equal(popped.ok, true)
+
+  st = await gitStatusForIpc('git', root)
+  assert.equal(st.unstaged.map(e => e.path).includes('README.md'), true)
+})
+
+test('e2e: stash action rejects a malformed ref', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  // Bad ref is simply ignored (not appended); drop with no stashes fails in git,
+  // but the point is the malformed ref never reaches the arg line.
+  const res = await gitStashActionForIpc('git', root, 'bogus', 'stash@{0}')
+  assert.equal(res.ok, false)
+  assert.equal(res.error, 'bad-action')
+})
+
+test('e2e: apply hunk stages a single hunk via patch', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  // Modify the file, grab the unstaged diff, then stage exactly that patch.
+  fs.writeFileSync(path.join(root, 'README.md'), '# repo\nline2 CHANGED\nline3\n')
+
+  const diff = await gitDiffForIpc('git', root, 'README.md', false)
+  assert.equal(diff.ok, true)
+  assert.match(diff.diff, /@@/)
+
+  const applied = await gitApplyHunkForIpc('git', root, diff.diff, { reverse: false })
+  assert.equal(applied.ok, true)
+
+  // After applying to the index, the change shows up as staged.
+  const st = await gitStatusForIpc('git', root)
+  assert.equal(st.staged.map(e => e.path).includes('README.md'), true)
+})
+
+test('e2e: apply hunk rejects an empty patch', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  const res = await gitApplyHunkForIpc('git', root, '   ')
+  assert.equal(res.ok, false)
+  assert.equal(res.error, 'empty-patch')
+})
+

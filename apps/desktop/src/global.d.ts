@@ -87,6 +87,20 @@ declare global {
         commit: (cwd: string, message: string, options?: { amend?: boolean; all?: boolean }) => Promise<HermesGitResult>
         push: (cwd: string, options?: { setUpstream?: boolean }) => Promise<HermesGitResult>
         pull: (cwd: string) => Promise<HermesGitResult>
+        fetch: (cwd: string) => Promise<HermesGitResult>
+        branches: (cwd: string) => Promise<HermesGitBranches>
+        checkout: (cwd: string, branch: string) => Promise<HermesGitResult>
+        createBranch: (cwd: string, name: string, options?: { startPoint?: string }) => Promise<HermesGitResult>
+        deleteBranch: (cwd: string, name: string, options?: { force?: boolean }) => Promise<HermesGitResult>
+        log: (cwd: string, options?: { limit?: number }) => Promise<HermesGitLog>
+        commitDiff: (cwd: string, sha: string) => Promise<{ ok: boolean; diff?: string; error?: string }>
+        stashList: (cwd: string) => Promise<HermesGitStashList>
+        stashPush: (
+          cwd: string,
+          options?: { includeUntracked?: boolean; message?: string }
+        ) => Promise<HermesGitResult>
+        stashAction: (cwd: string, action: 'apply' | 'drop' | 'pop', ref: string) => Promise<HermesGitResult>
+        applyHunk: (cwd: string, patch: string, options?: { reverse?: boolean }) => Promise<HermesGitResult>
       }
       terminal: {
         dispose: (id: string) => Promise<boolean>
@@ -490,6 +504,51 @@ export interface HermesGitResult {
   ok: boolean
   error?: string
   output?: string
+}
+
+export interface HermesGitBranch {
+  name: string
+  current: boolean
+  upstream: null | string
+  ahead: number
+  behind: number
+  sha: string
+  subject: string
+}
+
+export interface HermesGitBranches {
+  ok: boolean
+  error?: string
+  current?: null | string
+  local?: HermesGitBranch[]
+  remote?: HermesGitBranch[]
+}
+
+export interface HermesGitCommit {
+  sha: string
+  shortSha: string
+  author: string
+  authorEmail: string
+  date: string
+  relativeDate: string
+  subject: string
+}
+
+export interface HermesGitLog {
+  ok: boolean
+  error?: string
+  commits?: HermesGitCommit[]
+}
+
+export interface HermesGitStash {
+  ref: string
+  subject: string
+}
+
+export interface HermesGitStashList {
+  ok: boolean
+  error?: string
+  stashes?: HermesGitStash[]
 }
 
 export interface HermesWorktreeInfo {
