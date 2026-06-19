@@ -1790,6 +1790,7 @@ export const ja = defineLocale({
     addressPlaceholder: '検索またはアドレスを入力',
     newBrowserTab: 'ブラウザを開く',
     openBrowser: 'ブラウザを開く',
+    openInSystemBrowser: '既定のブラウザで開く',
     failedToLoad: 'ページを読み込めませんでした',
     unreachable: 'ページに到達できませんでした。',
     tryAgain: '再試行'

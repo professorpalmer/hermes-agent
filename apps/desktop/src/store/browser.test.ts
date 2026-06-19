@@ -8,6 +8,7 @@ import {
   navigateBrowser,
   normalizeBrowserInput,
   openBrowser,
+  openCurrentInSystemBrowser,
   openWebLink,
   reloadBrowser,
   setBrowserNavState
@@ -203,5 +204,46 @@ describe('openWebLink routing', () => {
 
     expect(openExternal).not.toHaveBeenCalled()
     expect($browserState.get().open).toBe(false)
+  })
+})
+
+describe('openCurrentInSystemBrowser', () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window
+  })
+
+  function installOpenExternal() {
+    const openExternal = vi.fn()
+
+    ;(globalThis as unknown as { window: { hermesDesktop: { openExternal: typeof openExternal } } }).window = {
+      hermesDesktop: { openExternal }
+    } as never
+
+    return openExternal
+  }
+
+  it('hands the current http(s) page to the OS browser (the passkey escape hatch)', () => {
+    const openExternal = installOpenExternal()
+    openBrowser('https://accounts.google.com/signin')
+
+    const handed = openCurrentInSystemBrowser()
+
+    expect(handed).toBe('https://accounts.google.com/signin')
+    expect(openExternal).toHaveBeenCalledWith('https://accounts.google.com/signin')
+  })
+
+  it('no-ops (and does not call openExternal) when there is no URL', () => {
+    const openExternal = installOpenExternal()
+
+    expect(openCurrentInSystemBrowser()).toBe('')
+    expect(openExternal).not.toHaveBeenCalled()
+  })
+
+  it('refuses non-http(s) URLs so it never hands a file:/about: page to the OS', () => {
+    const openExternal = installOpenExternal()
+    $browserState.set({ ...$browserState.get(), url: 'about:blank' })
+
+    expect(openCurrentInSystemBrowser()).toBe('')
+    expect(openExternal).not.toHaveBeenCalled()
   })
 })
