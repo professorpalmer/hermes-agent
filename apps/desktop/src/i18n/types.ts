@@ -1284,6 +1284,31 @@ export interface Translations {
     addToChat: string
   }
 
+  sourceControl: {
+    tab: string
+    notARepoTitle: string
+    notARepoBody: string
+    noBranch: string
+    noChanges: string
+    stagedChanges: string
+    changes: string
+    mergeChanges: string
+    untracked: string
+    stage: string
+    unstage: string
+    stageAll: string
+    unstageAll: string
+    discard: string
+    delete: string
+    commit: string
+    commitMessage: string
+    commitPlaceholder: (branch: string) => string
+    push: string
+    pull: string
+    publish: string
+    refresh: string
+  }
+
   preview: {
     tab: string
     closeTab: (label: string) => string

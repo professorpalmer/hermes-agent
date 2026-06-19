@@ -1822,6 +1822,30 @@ export const zh: Translations = {
     addToChat: '添加到对话'
   },
 
+  sourceControl: {
+    tab: '源代码管理',
+    notARepoTitle: '无源代码管理',
+    notARepoBody: '当前文件夹不是 Git 仓库。',
+    noBranch: '无分支',
+    noChanges: '无更改',
+    stagedChanges: '暂存的更改',
+    changes: '更改',
+    mergeChanges: '合并更改',
+    untracked: '未跟踪',
+    stage: '暂存',
+    unstage: '取消暂存',
+    stageAll: '全部暂存',
+    unstageAll: '全部取消暂存',
+    discard: '放弃更改',
+    delete: '删除文件',
+    commit: '提交',
+    commitMessage: '提交信息',
+    commitPlaceholder: branch => `信息（提交到 ${branch}）`,
+    push: '推送',
+    pull: '拉取',
+    publish: '发布分支',
+    refresh: '刷新'
+  },
   preview: {
     tab: '预览',
     closeTab: label => `关闭 ${label}`,

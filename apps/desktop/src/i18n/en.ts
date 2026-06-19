@@ -208,6 +208,7 @@ export const en: Translations = {
       'view.toggleSidebar': 'Toggle sessions sidebar',
       'view.toggleRightSidebar': 'Toggle file browser',
       'view.showFiles': 'Show file browser',
+      'view.showSourceControl': 'Show source control',
       'view.showTerminal': 'Show terminal',
       'view.terminalSelection': 'Send terminal selection to composer',
       'view.closePreviewTab': 'Close preview tab',
@@ -1642,6 +1643,30 @@ export const en: Translations = {
     addToChat: 'Add to chat'
   },
 
+  sourceControl: {
+    tab: 'Source Control',
+    notARepoTitle: 'No source control',
+    notARepoBody: 'The current folder is not a Git repository.',
+    noBranch: 'No branch',
+    noChanges: 'No changes',
+    stagedChanges: 'Staged Changes',
+    changes: 'Changes',
+    mergeChanges: 'Merge Changes',
+    untracked: 'Untracked',
+    stage: 'Stage',
+    unstage: 'Unstage',
+    stageAll: 'Stage all',
+    unstageAll: 'Unstage all',
+    discard: 'Discard changes',
+    delete: 'Delete file',
+    commit: 'Commit',
+    commitMessage: 'Commit message',
+    commitPlaceholder: branch => `Message (commit on ${branch})`,
+    push: 'Push',
+    pull: 'Pull',
+    publish: 'Publish branch',
+    refresh: 'Refresh'
+  },
   preview: {
     tab: 'Preview',
     closeTab: label => `Close ${label}`,

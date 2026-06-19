@@ -43,6 +43,16 @@ const { buildDesktopBackendEnv, normalizeHermesHomeRoot } = require('./backend-e
 const { readWindowsUserEnvVar } = require('./windows-user-env.cjs')
 const { readDirForIpc } = require('./fs-read-dir.cjs')
 const { gitRootForIpc } = require('./git-root.cjs')
+const {
+  gitStatusForIpc,
+  gitDiffForIpc,
+  gitStageForIpc,
+  gitUnstageForIpc,
+  gitDiscardForIpc,
+  gitCommitForIpc,
+  gitPushForIpc,
+  gitPullForIpc
+} = require('./git-scm.cjs')
 const { worktreesForIpc } = require('./git-worktrees.cjs')
 const { OFFICIAL_REPO_HTTPS_URL, isOfficialSshRemote } = require('./update-remote.cjs')
 const { runRebuildWithRetry } = require('./update-rebuild.cjs')
@@ -6040,6 +6050,25 @@ ipcMain.handle('hermes:fs:readDir', async (_event, dirPath) => readDirForIpc(dir
 ipcMain.handle('hermes:fs:gitRoot', async (_event, startPath) => gitRootForIpc(startPath))
 
 ipcMain.handle('hermes:fs:worktrees', async (_event, cwds) => worktreesForIpc(cwds))
+
+// ─── Git source control (desktop Source Control panel) ────────────────────────
+// All operations resolve + harden the cwd to a git root inside git-scm.cjs and
+// spawn `git` with an argument array (never a shell string). resolveGitBinary()
+// finds PortableGit on Windows.
+ipcMain.handle('hermes:git:status', async (_event, cwd) => gitStatusForIpc(resolveGitBinary(), cwd))
+ipcMain.handle('hermes:git:diff', async (_event, cwd, filePath, staged) =>
+  gitDiffForIpc(resolveGitBinary(), cwd, filePath, Boolean(staged))
+)
+ipcMain.handle('hermes:git:stage', async (_event, cwd, paths) => gitStageForIpc(resolveGitBinary(), cwd, paths))
+ipcMain.handle('hermes:git:unstage', async (_event, cwd, paths) => gitUnstageForIpc(resolveGitBinary(), cwd, paths))
+ipcMain.handle('hermes:git:discard', async (_event, cwd, paths) => gitDiscardForIpc(resolveGitBinary(), cwd, paths))
+ipcMain.handle('hermes:git:commit', async (_event, cwd, message, options) =>
+  gitCommitForIpc(resolveGitBinary(), cwd, message, options || {})
+)
+ipcMain.handle('hermes:git:push', async (_event, cwd, options) =>
+  gitPushForIpc(resolveGitBinary(), cwd, options || {})
+)
+ipcMain.handle('hermes:git:pull', async (_event, cwd) => gitPullForIpc(resolveGitBinary(), cwd))
 
 ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {
   if (!nodePty) {

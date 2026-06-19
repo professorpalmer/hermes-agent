@@ -1772,6 +1772,30 @@ export const ja = defineLocale({
     addToChat: 'チャットに追加'
   },
 
+  sourceControl: {
+    tab: 'ソース管理',
+    notARepoTitle: 'ソース管理なし',
+    notARepoBody: '現在のフォルダーは Git リポジトリではありません。',
+    noBranch: 'ブランチなし',
+    noChanges: '変更なし',
+    stagedChanges: 'ステージされた変更',
+    changes: '変更',
+    mergeChanges: 'マージの変更',
+    untracked: '追跡対象外',
+    stage: 'ステージ',
+    unstage: 'ステージ解除',
+    stageAll: 'すべてステージ',
+    unstageAll: 'すべてステージ解除',
+    discard: '変更を破棄',
+    delete: 'ファイルを削除',
+    commit: 'コミット',
+    commitMessage: 'コミットメッセージ',
+    commitPlaceholder: branch => `メッセージ（${branch} にコミット）`,
+    push: 'プッシュ',
+    pull: 'プル',
+    publish: 'ブランチを公開',
+    refresh: '更新'
+  },
   preview: {
     tab: 'プレビュー',
     closeTab: label => `${label} を閉じる`,

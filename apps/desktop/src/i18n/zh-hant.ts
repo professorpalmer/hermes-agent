@@ -1716,6 +1716,30 @@ export const zhHant = defineLocale({
     addToChat: '新增至聊天'
   },
 
+  sourceControl: {
+    tab: '原始檔控制',
+    notARepoTitle: '無原始檔控制',
+    notARepoBody: '目前資料夾不是 Git 儲存庫。',
+    noBranch: '無分支',
+    noChanges: '無變更',
+    stagedChanges: '已暫存的變更',
+    changes: '變更',
+    mergeChanges: '合併變更',
+    untracked: '未追蹤',
+    stage: '暫存',
+    unstage: '取消暫存',
+    stageAll: '全部暫存',
+    unstageAll: '全部取消暫存',
+    discard: '捨棄變更',
+    delete: '刪除檔案',
+    commit: '提交',
+    commitMessage: '提交訊息',
+    commitPlaceholder: branch => `訊息（提交至 ${branch}）`,
+    push: '推送',
+    pull: '拉取',
+    publish: '發佈分支',
+    refresh: '重新整理'
+  },
   preview: {
     tab: '預覽',
     closeTab: label => `關閉 ${label}`,
