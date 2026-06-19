@@ -1335,6 +1335,8 @@ export const en: Translations = {
     running: 'Running',
     stop: 'Stop',
     dismiss: 'Dismiss',
+    waitingForOutput: 'Waiting for output…',
+    noOutput: 'No output captured.',
     exit: code => `exit ${code}`
   },
 

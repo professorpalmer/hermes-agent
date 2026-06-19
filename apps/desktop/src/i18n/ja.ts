@@ -1463,6 +1463,8 @@ export const ja = defineLocale({
     running: '実行中',
     stop: '停止',
     dismiss: '閉じる',
+    waitingForOutput: '出力を待っています…',
+    noOutput: '出力はありません。',
     exit: code => `終了コード ${code}`
   },
 
