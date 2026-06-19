@@ -56,6 +56,16 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   readDir: dirPath => ipcRenderer.invoke('hermes:fs:readDir', dirPath),
   gitRoot: startPath => ipcRenderer.invoke('hermes:fs:gitRoot', startPath),
   worktrees: cwds => ipcRenderer.invoke('hermes:fs:worktrees', cwds),
+  git: {
+    status: cwd => ipcRenderer.invoke('hermes:git:status', cwd),
+    diff: (cwd, filePath, staged) => ipcRenderer.invoke('hermes:git:diff', cwd, filePath, staged),
+    stage: (cwd, paths) => ipcRenderer.invoke('hermes:git:stage', cwd, paths),
+    unstage: (cwd, paths) => ipcRenderer.invoke('hermes:git:unstage', cwd, paths),
+    discard: (cwd, paths) => ipcRenderer.invoke('hermes:git:discard', cwd, paths),
+    commit: (cwd, message, options) => ipcRenderer.invoke('hermes:git:commit', cwd, message, options),
+    push: (cwd, options) => ipcRenderer.invoke('hermes:git:push', cwd, options),
+    pull: cwd => ipcRenderer.invoke('hermes:git:pull', cwd)
+  },
   terminal: {
     dispose: id => ipcRenderer.invoke('hermes:terminal:dispose', id),
     resize: (id, size) => ipcRenderer.invoke('hermes:terminal:resize', id, size),
