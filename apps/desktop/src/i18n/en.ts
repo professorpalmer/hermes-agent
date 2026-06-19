@@ -208,6 +208,7 @@ export const en: Translations = {
       'view.toggleSidebar': 'Toggle sessions sidebar',
       'view.toggleRightSidebar': 'Toggle file browser',
       'view.showFiles': 'Show file browser',
+      'view.togglePlanMode': 'Toggle plan mode',
       'view.showSourceControl': 'Toggle source control',
       'view.showTerminal': 'Toggle terminal',
       'view.showBrowser': 'Toggle browser',
@@ -1225,6 +1226,9 @@ export const en: Translations = {
       'Adjust or continue'
     ],
     startVoice: 'Start voice conversation',
+    planMode: 'Plan',
+    planModeOnHint: 'Plan mode on — messages are routed to /plan (writes a plan, no execution). Click to turn off.',
+    planModeOffHint: 'Plan mode — route messages to /plan to get an actionable plan instead of execution.',
     queueMessage: 'Queue message',
     steer: 'Steer the current run',
     stop: 'Stop',

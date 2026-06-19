@@ -90,6 +90,7 @@ export const KEYBIND_ACTIONS: readonly KeybindActionMeta[] = [
   { id: 'view.toggleSidebar', category: 'view', defaults: ['mod+b'] },
   { id: 'view.toggleRightSidebar', category: 'view', defaults: ['mod+j'] },
   { id: 'view.showFiles', category: 'view', defaults: [] },
+  { id: 'view.togglePlanMode', category: 'view', defaults: ['mod+shift+p'] },
   { id: 'view.showSourceControl', category: 'view', defaults: ['mod+shift+g'] },
   { id: 'view.showTerminal', category: 'view', defaults: TERMINAL_TOGGLE_DEFAULTS },
   // ⌘⇧B — sibling to ⌘B (toggle sidebar); B for browser.
