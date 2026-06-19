@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   $browserNavRequest,
@@ -8,6 +8,7 @@ import {
   navigateBrowser,
   normalizeBrowserInput,
   openBrowser,
+  openWebLink,
   reloadBrowser,
   setBrowserNavState
 } from './browser'
@@ -139,5 +140,68 @@ describe('closeBrowser', () => {
 
     expect($browserState.get().open).toBe(false)
     expect($browserState.get().url).toBe('https://a.com')
+  })
+})
+
+describe('openWebLink routing', () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window
+  })
+
+  function installOpenExternal() {
+    const openExternal = vi.fn()
+
+    ;(globalThis as unknown as { window: { hermesDesktop: { openExternal: typeof openExternal } } }).window = {
+      hermesDesktop: { openExternal }
+    } as never
+
+    return openExternal
+  }
+
+  it('opens http links in the in-app browser panel by default', () => {
+    const openExternal = installOpenExternal()
+
+    openWebLink('https://example.com')
+
+    expect($browserState.get().open).toBe(true)
+    expect($browserState.get().url).toBe('https://example.com')
+    expect($rightRailActiveTabId.get()).toBe(RIGHT_RAIL_BROWSER_TAB_ID)
+    expect(openExternal).not.toHaveBeenCalled()
+  })
+
+  it('routes to the system browser on ⌘/Ctrl-click', () => {
+    const openExternal = installOpenExternal()
+
+    openWebLink('https://example.com', { metaKey: true })
+
+    expect($browserState.get().open).toBe(false)
+    expect(openExternal).toHaveBeenCalledWith('https://example.com')
+  })
+
+  it('routes to the system browser on middle-click', () => {
+    const openExternal = installOpenExternal()
+
+    openWebLink('https://example.com', { button: 1 })
+
+    expect(openExternal).toHaveBeenCalledWith('https://example.com')
+    expect($browserState.get().open).toBe(false)
+  })
+
+  it('sends non-http(s) schemes to the system handler, not the panel', () => {
+    const openExternal = installOpenExternal()
+
+    openWebLink('mailto:foo@bar.com')
+
+    expect(openExternal).toHaveBeenCalledWith('mailto:foo@bar.com')
+    expect($browserState.get().open).toBe(false)
+  })
+
+  it('is a no-op for an empty url', () => {
+    const openExternal = installOpenExternal()
+
+    openWebLink('')
+
+    expect(openExternal).not.toHaveBeenCalled()
+    expect($browserState.get().open).toBe(false)
   })
 })

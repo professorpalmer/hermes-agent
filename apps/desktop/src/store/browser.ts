@@ -96,6 +96,36 @@ export function navigateBrowser(input: string): string {
   return openBrowser(input)
 }
 
+// Decide where a web link opens. Default: the in-app browser panel (fast,
+// on-the-fly preview without leaving Hermes). A modifier (⌘/Ctrl) or a
+// middle-click routes to the system browser instead — matching VS Code/Cursor's
+// "open in editor vs. open externally" muscle memory.
+export function openWebLink(
+  url: string,
+  modifiers?: { metaKey?: boolean; ctrlKey?: boolean; button?: number }
+): void {
+  if (!url) {
+    return
+  }
+
+  const wantsSystem = Boolean(modifiers?.metaKey || modifiers?.ctrlKey || modifiers?.button === 1)
+
+  if (wantsSystem) {
+    void window.hermesDesktop?.openExternal?.(url)
+
+    return
+  }
+
+  // In-app browser only handles http(s); fall back to the OS for other schemes.
+  if (/^https?:\/\//i.test(url)) {
+    openBrowser(url)
+
+    return
+  }
+
+  void window.hermesDesktop?.openExternal?.(url)
+}
+
 /** Force a reload of the current page without changing the URL. */
 export function reloadBrowser() {
   const { url } = $browserState.get()
