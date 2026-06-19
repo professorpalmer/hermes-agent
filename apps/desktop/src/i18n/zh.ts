@@ -204,7 +204,7 @@ export const zh: Translations = {
       'view.toggleSidebar': '切换会话侧边栏',
       'view.toggleRightSidebar': '切换文件浏览器',
       'view.showFiles': '显示文件浏览器',
-      'view.showTerminal': '显示终端',
+      'view.showTerminal': '切换终端',
       'view.terminalSelection': '将终端选区发送到输入框',
       'view.closePreviewTab': '关闭预览标签',
       'view.flipPanes': '交换侧边栏位置',
