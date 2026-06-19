@@ -1879,6 +1879,16 @@ export const zh: Translations = {
     stashDrop: '丢弃储藏',
     history: '历史'
   },
+  review: {
+    tab: '审查',
+    emptyTitle: '无待处理编辑',
+    emptyBody: '代理所做的编辑将显示在此处，供你接受或拒绝。',
+    pendingCount: n => `${n} 项待处理编辑`,
+    accept: '接受',
+    reject: '拒绝',
+    acceptAll: '全部接受',
+    rejectAll: '全部拒绝'
+  },
   preview: {
     tab: '预览',
     closeTab: label => `关闭 ${label}`,

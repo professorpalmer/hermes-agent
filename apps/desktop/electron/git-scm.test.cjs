@@ -24,7 +24,8 @@ const {
   gitStashListForIpc,
   gitStashPushForIpc,
   gitStashActionForIpc,
-  gitApplyHunkForIpc
+  gitApplyHunkForIpc,
+  gitRevertEditForIpc
 } = require('./git-scm.cjs')
 
 // ── Pure parser tests (no git needed) ───────────────────────────────────────
@@ -332,4 +333,88 @@ test('e2e: apply hunk rejects an empty patch', { skip: !gitAvailable() }, async 
   assert.equal(res.ok, false)
   assert.equal(res.error, 'empty-patch')
 })
+
+// ── Edit review: revert (reject) ────────────────────────────────────────────
+
+test('e2e: revertEdit reverse-applies a diff to the worktree', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  const file = path.join(root, 'README.md')
+  const original = fs.readFileSync(file, 'utf8')
+
+  // Simulate an agent edit, capture its diff, then reject it.
+  fs.writeFileSync(file, '# repo\nAGENT EDIT\nline3\n')
+  const diff = await gitDiffForIpc('git', root, 'README.md', false)
+  assert.equal(diff.ok, true)
+
+  const res = await gitRevertEditForIpc('git', root, { path: 'README.md', diff: diff.diff, isNew: false })
+  assert.equal(res.ok, true)
+  // File restored to its pre-edit content.
+  assert.equal(fs.readFileSync(file, 'utf8'), original)
+})
+
+test('e2e: revertEdit deletes a newly-created file', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  const newFile = path.join(root, 'brand-new.txt')
+  fs.writeFileSync(newFile, 'created by agent\n')
+
+  const res = await gitRevertEditForIpc('git', root, { path: 'brand-new.txt', isNew: true })
+  assert.equal(res.ok, true)
+  assert.equal(fs.existsSync(newFile), false)
+})
+
+test('e2e: revertEdit preserves unrelated edits elsewhere in the file', { skip: !gitAvailable() }, async t => {
+  // A larger file so the agent's hunk and the user's hunk don't share context.
+  const { root, run } = initRepo()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const file = path.join(root, 'big.txt')
+  const lines = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`)
+  fs.writeFileSync(file, lines.join('\n') + '\n')
+  run(['add', 'big.txt'])
+  run(['commit', '-q', '-m', 'init big'])
+
+  // Agent edits line 3; capture that diff.
+  const agentLines = [...lines]
+  agentLines[2] = 'AGENT EDIT'
+  fs.writeFileSync(file, agentLines.join('\n') + '\n')
+  const diff = await gitDiffForIpc('git', root, 'big.txt', false)
+  assert.equal(diff.ok, true)
+
+  // A separate edit lands on line 18 — far from the agent's hunk.
+  const bothLines = [...agentLines]
+  bothLines[17] = 'USER EDIT'
+  fs.writeFileSync(file, bothLines.join('\n') + '\n')
+
+  // Rejecting the agent's diff undoes line 3, keeps line 18.
+  const res = await gitRevertEditForIpc('git', root, { path: 'big.txt', diff: diff.diff, isNew: false })
+  assert.equal(res.ok, true)
+  const after = fs.readFileSync(file, 'utf8')
+  assert.match(after, /USER EDIT/)
+  assert.doesNotMatch(after, /AGENT EDIT/)
+  assert.match(after, /line 3/) // restored
+})
+
+test('e2e: revertEdit fails safely when the diff no longer applies', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  const file = path.join(root, 'README.md')
+
+  fs.writeFileSync(file, '# repo\nAGENT EDIT\nline3\n')
+  const diff = await gitDiffForIpc('git', root, 'README.md', false)
+
+  // The file is then rewritten entirely, so the agent's diff context is gone.
+  fs.writeFileSync(file, 'completely different content\n')
+
+  const res = await gitRevertEditForIpc('git', root, { path: 'README.md', diff: diff.diff, isNew: false })
+  // Must not corrupt the file — reject cleanly instead.
+  assert.equal(res.ok, false)
+  assert.equal(fs.readFileSync(file, 'utf8'), 'completely different content\n')
+})
+
+
+test('e2e: revertEdit rejects a bad path', { skip: !gitAvailable() }, async t => {
+  const { root } = seededRepo(t)
+  const res = await gitRevertEditForIpc('git', root, { path: '', diff: 'x' })
+  assert.equal(res.ok, false)
+  assert.equal(res.error, 'bad-path')
+})
+
 

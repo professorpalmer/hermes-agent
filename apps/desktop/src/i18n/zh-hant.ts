@@ -1772,6 +1772,16 @@ export const zhHant = defineLocale({
     stashDrop: '捨棄收藏',
     history: '歷史'
   },
+  review: {
+    tab: '審查',
+    emptyTitle: '無待處理編輯',
+    emptyBody: '代理所做的編輯將顯示在此處，供你接受或拒絕。',
+    pendingCount: n => `${n} 項待處理編輯`,
+    accept: '接受',
+    reject: '拒絕',
+    acceptAll: '全部接受',
+    rejectAll: '全部拒絕'
+  },
   preview: {
     tab: '預覽',
     closeTab: label => `關閉 ${label}`,

@@ -1700,6 +1700,16 @@ export const en: Translations = {
     stashDrop: 'Drop stash',
     history: 'History'
   },
+  review: {
+    tab: 'Review',
+    emptyTitle: 'No pending edits',
+    emptyBody: 'Edits the agent makes will appear here to accept or reject.',
+    pendingCount: n => `${n} pending ${n === 1 ? 'edit' : 'edits'}`,
+    accept: 'Accept',
+    reject: 'Reject',
+    acceptAll: 'Accept all',
+    rejectAll: 'Reject all'
+  },
   preview: {
     tab: 'Preview',
     closeTab: label => `Close ${label}`,

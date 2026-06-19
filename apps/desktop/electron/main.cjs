@@ -63,7 +63,8 @@ const {
   gitStashListForIpc,
   gitStashPushForIpc,
   gitStashActionForIpc,
-  gitApplyHunkForIpc
+  gitApplyHunkForIpc,
+  gitRevertEditForIpc
 } = require('./git-scm.cjs')
 const { worktreesForIpc } = require('./git-worktrees.cjs')
 const { OFFICIAL_REPO_HTTPS_URL, isOfficialSshRemote } = require('./update-remote.cjs')
@@ -6102,6 +6103,9 @@ ipcMain.handle('hermes:git:stashAction', async (_event, cwd, action, ref) =>
 )
 ipcMain.handle('hermes:git:applyHunk', async (_event, cwd, patch, options) =>
   gitApplyHunkForIpc(resolveGitBinary(), cwd, patch, options || {})
+)
+ipcMain.handle('hermes:git:revertEdit', async (_event, cwd, payload) =>
+  gitRevertEditForIpc(resolveGitBinary(), cwd, payload || {})
 )
 
 ipcMain.handle('hermes:terminal:start', async (event, payload = {}) => {

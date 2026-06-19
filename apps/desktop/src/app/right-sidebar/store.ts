@@ -10,9 +10,10 @@ $terminalTakeover.subscribe(active => persistBoolean(TAKEOVER_KEY, active))
 
 export const setTerminalTakeover = (active: boolean) => $terminalTakeover.set(active)
 
-// Which view the right sidebar shows: the project file tree or source control.
-// Both share the one right-sidebar pane (VS Code-style activity switch).
-export type RightSidebarView = 'files' | 'source-control'
+// Which view the right sidebar shows: the project file tree, source control, or
+// the agent edit-review queue. All share the one right-sidebar pane (VS
+// Code-style activity switch).
+export type RightSidebarView = 'files' | 'review' | 'source-control'
 
 export const $rightSidebarView = atom<RightSidebarView>('files')
 

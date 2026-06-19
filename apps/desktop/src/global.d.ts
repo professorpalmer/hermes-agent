@@ -100,7 +100,11 @@ declare global {
           options?: { includeUntracked?: boolean; message?: string }
         ) => Promise<HermesGitResult>
         stashAction: (cwd: string, action: 'apply' | 'drop' | 'pop', ref: string) => Promise<HermesGitResult>
-        applyHunk: (cwd: string, patch: string, options?: { reverse?: boolean }) => Promise<HermesGitResult>
+        applyHunk: (cwd: string, patch: string, options?: { reverse?: boolean; target?: 'index' | 'worktree' }) => Promise<HermesGitResult>
+        revertEdit: (
+          cwd: string,
+          payload: { path: string; diff?: string; isNew?: boolean }
+        ) => Promise<HermesGitResult>
       }
       terminal: {
         dispose: (id: string) => Promise<boolean>

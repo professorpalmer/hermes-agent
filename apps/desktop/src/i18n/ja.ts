@@ -1828,6 +1828,16 @@ export const ja = defineLocale({
     stashDrop: 'スタッシュを破棄',
     history: '履歴'
   },
+  review: {
+    tab: 'レビュー',
+    emptyTitle: '保留中の編集なし',
+    emptyBody: 'エージェントが行った編集がここに表示され、承認または却下できます。',
+    pendingCount: n => `保留中の編集 ${n} 件`,
+    accept: '承認',
+    reject: '却下',
+    acceptAll: 'すべて承認',
+    rejectAll: 'すべて却下'
+  },
   preview: {
     tab: 'プレビュー',
     closeTab: label => `${label} を閉じる`,

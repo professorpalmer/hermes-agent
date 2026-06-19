@@ -75,7 +75,8 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     stashList: cwd => ipcRenderer.invoke('hermes:git:stashList', cwd),
     stashPush: (cwd, options) => ipcRenderer.invoke('hermes:git:stashPush', cwd, options),
     stashAction: (cwd, action, ref) => ipcRenderer.invoke('hermes:git:stashAction', cwd, action, ref),
-    applyHunk: (cwd, patch, options) => ipcRenderer.invoke('hermes:git:applyHunk', cwd, patch, options)
+    applyHunk: (cwd, patch, options) => ipcRenderer.invoke('hermes:git:applyHunk', cwd, patch, options),
+    revertEdit: (cwd, payload) => ipcRenderer.invoke('hermes:git:revertEdit', cwd, payload)
   },
   terminal: {
     dispose: id => ipcRenderer.invoke('hermes:terminal:dispose', id),
