@@ -1822,6 +1822,20 @@ export const zh: Translations = {
     addToChat: '添加到对话'
   },
 
+  browser: {
+    tab: '浏览器',
+    back: '后退',
+    forward: '前进',
+    reload: '重新加载',
+    stop: '停止',
+    addressBar: '地址栏',
+    addressPlaceholder: '搜索或输入网址',
+    newBrowserTab: '打开浏览器',
+    openBrowser: '打开浏览器',
+    failedToLoad: '此页面加载失败',
+    unreachable: '无法访问该页面。',
+    tryAgain: '重试'
+  },
   preview: {
     tab: '预览',
     closeTab: label => `关闭 ${label}`,
