@@ -1415,6 +1415,8 @@ export const zhHant = defineLocale({
     subagents: count => `${count} 個子代理`,
     todos: (done, total) => `任務 ${done}/${total}`,
     running: '執行中',
+    failed: '失敗',
+    done: '完成',
     stop: '停止',
     dismiss: '關閉',
     waitingForOutput: '正在等待輸出…',

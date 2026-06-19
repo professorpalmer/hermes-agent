@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { blurComposerInput } from '@/app/chat/composer/focus'
@@ -19,9 +19,11 @@ import {
   type StatusGroup,
   stopBackgroundProcess
 } from '@/store/composer-status'
+import { $workingSessionIds } from '@/store/session'
 import { $threadScrolledUp } from '@/store/thread-scroll'
 import { openSessionInNewWindow } from '@/store/windows'
 
+import { ProcessOutputModal } from './process-output-modal'
 import { StatusItemRow } from './status-row'
 
 // Slow safety-net poll for silent exits (processes without notify_on_complete
@@ -53,6 +55,17 @@ export function ComposerStatusStack({ queue, sessionId }: ComposerStatusStackPro
   const navigate = useNavigate()
   const itemsBySession = useStore($statusItemsBySession)
   const scrolledUp = useStore($threadScrolledUp)
+  const workingSessionIds = useStore($workingSessionIds)
+
+  // Whether THIS session's turn is actively running. A todo marked
+  // `in_progress` only deserves a live spinner while the agent is working — if
+  // the turn ends (or the agent stops to ask the user something) mid-plan, the
+  // spinner must settle instead of grinding forever (the "task pane hangs at
+  // the end" report). Off-session / no-session → not working.
+  const sessionWorking = !!sessionId && workingSessionIds.includes(sessionId)
+
+  // Which background task's roomy live-output modal is open (by id), if any.
+  const [outputModalId, setOutputModalId] = useState<null | string>(null)
 
   const groups = useMemo(
     () => groupStatusItems(sessionId ? (itemsBySession[sessionId] ?? []) : []),
@@ -115,7 +128,9 @@ export function ComposerStatusStack({ queue, sessionId }: ComposerStatusStackPro
             key={item.id}
             onDismiss={sessionId ? id => dismissBackgroundProcess(sessionId, id) : undefined}
             onOpen={() => openSubagent(item)}
+            onOpenOutput={setOutputModalId}
             onStop={sessionId ? id => stopBackgroundProcess(sessionId, id) : undefined}
+            sessionWorking={sessionWorking}
           />
         ))}
       </StatusSection>
@@ -165,11 +180,17 @@ export function ComposerStatusStack({ queue, sessionId }: ComposerStatusStackPro
   }, [visible])
 
   if (!visible) {
-    return null
+    return outputModalId ? (
+      <ProcessOutputModal itemId={outputModalId} onClose={() => setOutputModalId(null)} />
+    ) : null
   }
 
   return (
-    <div
+    <>
+      {outputModalId && (
+        <ProcessOutputModal itemId={outputModalId} onClose={() => setOutputModalId(null)} />
+      )}
+      <div
       // Sits above the composer (bottom-full), nudged down by the shell's 0.5rem
       // top pad (pt-2 on composer-root) plus 1px so its bottom edge overlaps the
       // composer surface's top border. z BELOW the surface (z-4) so the surface's
@@ -198,5 +219,6 @@ export function ComposerStatusStack({ queue, sessionId }: ComposerStatusStackPro
         </div>
       </div>
     </div>
+    </>
   )
 }

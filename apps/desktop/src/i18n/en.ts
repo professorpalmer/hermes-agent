@@ -1333,6 +1333,8 @@ export const en: Translations = {
     subagents: count => `${count} Subagent${count === 1 ? '' : 's'}`,
     todos: (done, total) => `Tasks ${done}/${total}`,
     running: 'Running',
+    failed: 'Failed',
+    done: 'Done',
     stop: 'Stop',
     dismiss: 'Dismiss',
     waitingForOutput: 'Waiting for output…',

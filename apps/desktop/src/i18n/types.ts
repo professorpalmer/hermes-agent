@@ -1013,6 +1013,8 @@ export interface Translations {
     subagents: (count: number) => string
     todos: (done: number, total: number) => string
     running: string
+    failed: string
+    done: string
     stop: string
     dismiss: string
     waitingForOutput: string

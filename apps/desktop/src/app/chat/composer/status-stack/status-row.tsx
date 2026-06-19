@@ -30,7 +30,7 @@ const TODO_GLYPHS: Record<Exclude<TodoStatus, 'in_progress' | 'pending'>, { icon
 
 // Left slot: braille spinner while running, otherwise a small status dot
 // (green = done, red = failed) so the slot is always filled and rows align.
-function leadingGlyph(item: ComposerStatusItem, s: Translations['statusStack']): ReactNode {
+function leadingGlyph(item: ComposerStatusItem, s: Translations['statusStack'], sessionWorking: boolean): ReactNode {
   if (item.todoStatus === 'pending') {
     return (
       <span
@@ -46,12 +46,32 @@ function leadingGlyph(item: ComposerStatusItem, s: Translations['statusStack']):
     return <Codicon className={glyph.tone} name={glyph.icon} size="0.8rem" />
   }
 
-  if (item.state === 'running') {
+  // An `in_progress` todo (or a running background/subagent item) only gets a
+  // live spinner while the session's turn is actually running. If the turn has
+  // settled — the agent finished, stopped, or is waiting on the user — a todo
+  // left mid-flight must NOT keep spinning forever (the "task pane hangs at the
+  // end" bug): fall through to a static dot so the row reads as paused, not
+  // actively working. Background/subagent rows carry their own real lifecycle
+  // (`state`), so they're unaffected when the gate is open.
+  const isTodoInProgress = item.todoStatus === 'in_progress'
+
+  if (item.state === 'running' && (sessionWorking || !isTodoInProgress)) {
     return (
       <GlyphSpinner
         ariaLabel={s.running}
         className="text-[0.9rem] leading-none text-muted-foreground/80"
         spinner="braille"
+      />
+    )
+  }
+
+  // Settled in_progress todo: a hollow ring reads as "started, awaiting the
+  // next turn" — distinct from the dashed pending ring and the filled done dot.
+  if (isTodoInProgress) {
+    return (
+      <span
+        aria-hidden
+        className="box-border size-[0.7rem] rounded-full border-2 border-muted-foreground/55"
       />
     )
   }
@@ -73,6 +93,11 @@ interface StatusItemRowProps {
   onOpen?: () => void
   /** Cancel a running background task. */
   onStop?: (id: string) => void
+  /** Open the roomy live process-output modal for a running background task. */
+  onOpenOutput?: (id: string) => void
+  /** Whether the owning session's turn is actively running — gates the live
+   *  spinner on `in_progress` todos so they settle when the turn ends. */
+  sessionWorking?: boolean
 }
 
 /**
@@ -80,7 +105,14 @@ interface StatusItemRowProps {
  * Memoised + keyed by id so parent re-renders never remount it (the spinner
  * keeps ticking instead of resetting).
  */
-export const StatusItemRow = memo(function StatusItemRow({ item, onDismiss, onOpen, onStop }: StatusItemRowProps) {
+export const StatusItemRow = memo(function StatusItemRow({
+  item,
+  onDismiss,
+  onOpen,
+  onStop,
+  onOpenOutput,
+  sessionWorking = false
+}: StatusItemRowProps) {
   const { t } = useI18n()
   const s = t.statusStack
   const [outputOpen, setOutputOpen] = useState(false)
@@ -95,18 +127,24 @@ export const StatusItemRow = memo(function StatusItemRow({ item, onDismiss, onOp
       : null
 
   const canOpen = item.type === 'subagent' && !!onOpen
-  // Every background task is expandable — clicking toggles its captured output
-  // inline (the gateway's process `output_tail`, which live-tails as it grows).
-  // A running task whose first output hasn't arrived yet still expands, showing
-  // a "waiting for output" placeholder, so the click is never a dead no-op
-  // (the "clicking a background task does nothing" bug).
+  // Background tasks: a *running* job opens the roomy live process-output modal
+  // (the "see what's running" view) — its gateway subprocess can't live in the
+  // interactive xterm pane, so a dedicated tailing viewer is the honest home for
+  // it. A *finished* job toggles its captured output inline (cheap, no modal).
   const isBackground = item.type === 'background'
-  const onActivate = canOpen ? onOpen : isBackground ? () => setOutputOpen(open => !open) : undefined
+
+  const onActivate = canOpen
+    ? onOpen
+    : isBackground
+      ? running
+        ? () => onOpenOutput?.(item.id)
+        : () => setOutputOpen(open => !open)
+      : undefined
 
   return (
     <Fragment>
       <StatusRow
-        leading={leadingGlyph(item, s)}
+        leading={leadingGlyph(item, s, sessionWorking)}
         onActivate={onActivate}
         trailing={
           action ? (
