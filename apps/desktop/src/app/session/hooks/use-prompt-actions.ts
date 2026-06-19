@@ -57,8 +57,8 @@ import { clearSessionSubagents } from '@/store/subagents'
 import { clearSessionTodos } from '@/store/todos'
 
 import type {
-  ClientSessionState,
   BrowserManageResponse,
+  ClientSessionState,
   FileAttachResponse,
   HandoffFailResponse,
   HandoffRequestResponse,
@@ -590,7 +590,13 @@ export function usePromptActions({
         id: optimisticId,
         role: 'user',
         parts: [textPart(visibleText || (attachmentRefs.length ? '' : attachments.map(a => a.label).join(', ')))],
-        attachmentRefs
+        attachmentRefs,
+        // Marks this as an in-flight optimistic send: its server counterpart
+        // isn't in the stored transcript yet, so a hydrate that races the send
+        // (e.g. an early-sent queued message that interrupts the prior turn)
+        // must preserve it rather than overwrite it away. Cleared when the real
+        // transcript lands.
+        pending: true
       })
 
       const releaseBusy = () => {
@@ -1359,6 +1365,7 @@ export function usePromptActions({
 
   const cancelRun = useCallback(async () => {
     const sessionId = activeSessionId || activeSessionIdRef.current
+
     const releaseBusy = () => {
       setMutableRef(busyRef, false)
       setBusy(false)
