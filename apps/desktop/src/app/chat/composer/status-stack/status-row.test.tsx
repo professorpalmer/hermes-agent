@@ -59,6 +59,7 @@ describe('StatusItemRow in_progress spinner gating', () => {
       type: 'background',
       state: 'running'
     }
+
     const { container } = renderRow(bg, false)
     expect(hasSpinner(container)).toBe(true)
   })
@@ -71,14 +72,14 @@ describe('StatusItemRow in_progress spinner gating', () => {
       state: 'done',
       todoStatus: 'completed'
     }
+
     const { container } = renderRow(done, false)
     expect(hasSpinner(container)).toBe(false)
   })
 })
 
-// ── "clicking a background task does nothing" regression: every background row
-// is expandable, showing its captured output inline (or a placeholder until the
-// first output_tail chunk arrives). ────────────────────────────────────────
+// ── Background task output: a *running* job opens the roomy live-output modal
+// (onOpenOutput); a *finished* job toggles its captured output inline. ───────
 
 function bgItem(overrides: Partial<ComposerStatusItem> = {}): ComposerStatusItem {
   return {
@@ -90,24 +91,38 @@ function bgItem(overrides: Partial<ComposerStatusItem> = {}): ComposerStatusItem
   } as ComposerStatusItem
 }
 
+function renderRowWithHandlers(
+  item: ComposerStatusItem,
+  handlers: { onOpenOutput?: (id: string) => void } = {}
+) {
+  return render(
+    <I18nProvider configClient={null}>
+      <StatusItemRow item={item} onOpenOutput={handlers.onOpenOutput} sessionWorking={false} />
+    </I18nProvider>
+  )
+}
+
 describe('StatusItemRow — background task output', () => {
   it('a running background task with no output yet is still clickable', () => {
     renderRow(bgItem())
     expect(screen.getByRole('button')).toBeTruthy()
   })
 
-  it('clicking a running task with no output reveals the waiting placeholder', () => {
-    renderRow(bgItem())
-    expect(screen.queryByText('Waiting for output…')).toBeNull()
+  it('clicking a RUNNING task opens the live-output modal (does not expand inline)', () => {
+    let openedId: string | null = null
+    renderRowWithHandlers(bgItem({ output: 'line 1\n' }), { onOpenOutput: id => (openedId = id) })
+
     fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByText('Waiting for output…')).toBeTruthy()
+
+    // Routed to the modal, not the cramped inline box.
+    expect(openedId).toBe('bg-1')
+    expect(screen.queryByText(/line 1/)).toBeNull()
   })
 
-  it('clicking a task with captured output shows the output, not a placeholder', () => {
-    renderRow(bgItem({ output: 'line 1\nline 2\n' }))
+  it('a FINISHED task with captured output expands it inline on click', () => {
+    renderRow(bgItem({ state: 'done', output: 'line 1\nline 2\n' }))
     fireEvent.click(screen.getByRole('button'))
     expect(screen.getByText(/line 1/)).toBeTruthy()
-    expect(screen.queryByText('Waiting for output…')).toBeNull()
   })
 
   it('a finished task with no output shows the no-output placeholder when expanded', () => {
@@ -116,8 +131,8 @@ describe('StatusItemRow — background task output', () => {
     expect(screen.getByText('No output captured.')).toBeTruthy()
   })
 
-  it('toggles the output region closed on a second click', () => {
-    renderRow(bgItem({ output: 'hello' }))
+  it('toggles the inline output region closed on a second click (finished task)', () => {
+    renderRow(bgItem({ state: 'done', output: 'hello' }))
     const row = screen.getByRole('button')
     fireEvent.click(row)
     expect(screen.getByText(/hello/)).toBeTruthy()

@@ -93,6 +93,8 @@ interface StatusItemRowProps {
   onOpen?: () => void
   /** Cancel a running background task. */
   onStop?: (id: string) => void
+  /** Open the roomy live process-output modal for a running background task. */
+  onOpenOutput?: (id: string) => void
   /** Whether the owning session's turn is actively running — gates the live
    *  spinner on `in_progress` todos so they settle when the turn ends. */
   sessionWorking?: boolean
@@ -108,6 +110,7 @@ export const StatusItemRow = memo(function StatusItemRow({
   onDismiss,
   onOpen,
   onStop,
+  onOpenOutput,
   sessionWorking = false
 }: StatusItemRowProps) {
   const { t } = useI18n()
@@ -124,13 +127,19 @@ export const StatusItemRow = memo(function StatusItemRow({
       : null
 
   const canOpen = item.type === 'subagent' && !!onOpen
-  // Every background task is expandable — clicking toggles its captured output
-  // inline (the gateway's process `output_tail`, which live-tails as it grows).
-  // A running task whose first output hasn't arrived yet still expands, showing
-  // a "waiting for output" placeholder, so the click is never a dead no-op
-  // (the "clicking a background task does nothing" bug).
+  // Background tasks: a *running* job opens the roomy live process-output modal
+  // (the "see what's running" view) — its gateway subprocess can't live in the
+  // interactive xterm pane, so a dedicated tailing viewer is the honest home for
+  // it. A *finished* job toggles its captured output inline (cheap, no modal).
   const isBackground = item.type === 'background'
-  const onActivate = canOpen ? onOpen : isBackground ? () => setOutputOpen(open => !open) : undefined
+
+  const onActivate = canOpen
+    ? onOpen
+    : isBackground
+      ? running
+        ? () => onOpenOutput?.(item.id)
+        : () => setOutputOpen(open => !open)
+      : undefined
 
   return (
     <Fragment>
