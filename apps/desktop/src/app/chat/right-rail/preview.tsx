@@ -27,9 +27,21 @@ import { BrowserPane } from './browser-pane'
 import { PreviewPane } from './preview-pane'
 
 export const PREVIEW_RAIL_MIN_WIDTH = '18rem'
-export const PREVIEW_RAIL_MAX_WIDTH = '38rem'
+// Drag-out cap for the preview/browser rail. Expressed in vw (not a fixed rem)
+// so it scales with the window and can never let a drag crush the chat surface:
+// the pane-shell drag clamp (`hi`) uses maxWidth ALONE (it does not subtract the
+// chat min-width the way PREVIEW_RAIL_PANE_WIDTH does), so a fixed rem max would
+// over-extend on a narrow window. 82vw always leaves ~18vw for the chat +
+// sidebar. On a 1440px display this is ~1180px — well over double the previous
+// 38rem (~608px) ceiling, which was too tight for reading docs / web pages in
+// the in-app browser.
+export const PREVIEW_RAIL_MAX_WIDTH = '82vw'
 
-const INTRINSIC = `clamp(${PREVIEW_RAIL_MIN_WIDTH}, 36vw, 32rem)`
+// Default (pre-drag) auto width. The middle clamp term is the intrinsic ceiling
+// the pane opens to before any user resize; 36vw keeps it proportional on small
+// screens, and the 64rem cap (doubled from 32rem) lets it open meaningfully
+// wider on large displays. The hard drag-out limit is PREVIEW_RAIL_MAX_WIDTH.
+const INTRINSIC = `clamp(${PREVIEW_RAIL_MIN_WIDTH}, 36vw, 64rem)`
 
 // Track for <Pane id="preview">. Folds the intrinsic clamp with a min-floor
 // against --chat-min-width so the chat surface never gets squeezed below it.
