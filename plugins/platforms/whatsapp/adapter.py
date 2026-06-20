@@ -19,7 +19,6 @@ import asyncio
 import logging
 import os
 import platform
-import shutil
 import signal
 import subprocess
 
@@ -27,7 +26,11 @@ _IS_WINDOWS = platform.system() == "Windows"
 from pathlib import Path
 from typing import Dict, Optional, Any
 
-from hermes_constants import get_hermes_dir
+from hermes_constants import (
+    find_node_executable,
+    get_hermes_dir,
+    with_hermes_node_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +191,7 @@ from gateway.platforms.base import (
     cache_image_from_url,
     cache_audio_from_url,
 )
+from utils import env_int
 
 
 def _file_content_hash(path: Path) -> str:
@@ -212,10 +216,9 @@ def check_whatsapp_requirements() -> bool:
     
     WhatsApp requires a Node.js bridge for most implementations.
     """
-    # Check for Node.js.  Resolve via shutil.which so we respect PATHEXT
-    # (node.exe vs node) and get a meaningful "not installed" signal
-    # instead of spawning a cmd flash on Windows.
-    _node = shutil.which("node")
+    # Prefer Hermes-managed Node/npm so Windows installs are not broken by a
+    # bad or elevation-triggering system Node on PATH.
+    _node = find_node_executable("node")
     if not _node:
         return False
     try:
@@ -404,20 +407,20 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
                     _deps_fresh = False
             if not _deps_fresh:
                 print(f"[{self.name}] Installing WhatsApp bridge dependencies...")
-                # Resolve npm path so Windows can execute the .cmd shim.
-                # shutil.which honours PATHEXT; on POSIX it returns the
-                # plain executable path.
-                _npm_bin = shutil.which("npm") or "npm"
+                # Resolve npm path so Windows uses npm.cmd from the
+                # Hermes-managed portable Node before falling back to PATH.
+                _npm_bin = find_node_executable("npm") or "npm"
                 try:
                     # Read timeout from environment variable, default to 300 seconds (5 minutes)
                     # to accommodate slower systems like Unraid NAS
-                    npm_install_timeout = int(os.environ.get("WHATSAPP_NPM_INSTALL_TIMEOUT", "300"))
+                    npm_install_timeout = env_int("WHATSAPP_NPM_INSTALL_TIMEOUT", 300)
                     install_result = subprocess.run(
                         [_npm_bin, "install", "--silent"],
                         cwd=str(bridge_dir),
                         capture_output=True,
                         text=True,
                         timeout=npm_install_timeout,
+                        env=with_hermes_node_path(),
                     )
                     if install_result.returncode != 0:
                         print(f"[{self.name}] npm install failed: {install_result.stderr}")
@@ -490,7 +493,8 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
             # Build bridge subprocess environment.
             # Pass WHATSAPP_REPLY_PREFIX from config.yaml so the Node bridge
             # can use it without the user needing to set a separate env var.
-            bridge_env = os.environ.copy()
+            # with_hermes_node_path() copies os.environ when called with no arg.
+            bridge_env = with_hermes_node_path()
             if self._reply_prefix is not None:
                 bridge_env["WHATSAPP_REPLY_PREFIX"] = self._reply_prefix
             # Pass the profile-aware cache directories so the bridge writes
@@ -508,7 +512,7 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
 
             self._bridge_process = subprocess.Popen(
                 [
-                    "node",
+                    find_node_executable("node") or "node",
                     str(bridge_path),
                     "--port", str(self._bridge_port),
                     "--session", str(self._session_path),
@@ -1191,3 +1195,190 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
         except Exception as e:
             print(f"[{self.name}] Error building event: {e}")
             return None
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Plugin migration glue (#41112 / #3823)
+#
+# Added when the WhatsApp adapter moved from gateway/platforms/whatsapp.py into
+# this bundled plugin. Mirrors the Discord (#24356) / Slack migrations: a
+# register(ctx) entry point plus hook implementations that replace the
+# per-platform core touchpoints (the Platform.WHATSAPP elif in gateway/run.py,
+# the whatsapp_cfg YAML→env block + _PLATFORM_CONNECTED_CHECKERS entry in
+# gateway/config.py, the _setup_whatsapp wizard + _PLATFORMS["whatsapp"] static
+# dict in hermes_cli/gateway.py, and the _send_whatsapp dispatch in
+# tools/send_message_tool.py).  WhatsApp auth is handled by the Node.js bridge,
+# so is_connected is always True (matches the legacy checker).
+# ──────────────────────────────────────────────────────────────────────────
+
+
+async def _standalone_send(
+    pconfig,
+    chat_id,
+    message,
+    *,
+    thread_id=None,
+    media_files=None,
+    force_document=False,
+):
+    """Out-of-process WhatsApp delivery via the local bridge HTTP API.
+
+    Implements the standalone_sender_fn contract so deliver=whatsapp cron jobs
+    succeed when cron runs separately from the gateway. Replaces the legacy
+    _send_whatsapp helper.
+    """
+    extra = getattr(pconfig, "extra", {}) or {}
+    try:
+        import aiohttp
+    except ImportError:
+        return {"error": "aiohttp not installed. Run: pip install aiohttp"}
+    try:
+        bridge_port = extra.get("bridge_port", 3000)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"http://localhost:{bridge_port}/send",
+                json={"chatId": chat_id, "message": message},
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return {
+                        "success": True,
+                        "platform": "whatsapp",
+                        "chat_id": chat_id,
+                        "message_id": data.get("messageId"),
+                    }
+                body = await resp.text()
+                return {"error": f"WhatsApp bridge error ({resp.status}): {body}"}
+    except Exception as e:
+        return {"error": f"WhatsApp send failed: {e}"}
+
+
+def interactive_setup() -> None:
+    """Guide the user through WhatsApp setup.
+
+    Replaces the central _setup_whatsapp in hermes_cli/gateway.py and the
+    static _PLATFORMS["whatsapp"] dict. CLI helpers are lazy-imported so the
+    plugin's module-load surface stays minimal.
+    """
+    from hermes_cli.config import get_env_value, save_env_value
+    from hermes_cli.cli_output import (
+        prompt,
+        prompt_yes_no,
+        print_header,
+        print_info,
+        print_success,
+    )
+
+    print_header("WhatsApp")
+    print_info("WhatsApp uses a local Node.js bridge (WhatsApp Web client).")
+    print_info("Start the bridge separately; the gateway connects to it over HTTP.")
+    existing = get_env_value("WHATSAPP_ENABLED")
+    if existing and existing.lower() in {"true", "1", "yes"}:
+        print_info("WhatsApp: already enabled")
+        if not prompt_yes_no("Reconfigure WhatsApp?", False):
+            return
+
+    if prompt_yes_no("Enable WhatsApp?", True):
+        save_env_value("WHATSAPP_ENABLED", "true")
+        print_success("WhatsApp enabled")
+    else:
+        save_env_value("WHATSAPP_ENABLED", "false")
+        print_info("WhatsApp left disabled")
+        return
+
+    allowed_users = prompt(
+        "Allowed user IDs (comma-separated, leave empty for no allowlist)"
+    )
+    if allowed_users:
+        save_env_value("WHATSAPP_ALLOWED_USERS", allowed_users.replace(" ", ""))
+        print_success("WhatsApp allowlist configured")
+
+    home_channel = prompt("Home chat ID for cron delivery (leave empty to skip)")
+    if home_channel:
+        save_env_value("WHATSAPP_HOME_CHANNEL", home_channel.strip())
+
+
+def _apply_yaml_config(yaml_cfg: dict, whatsapp_cfg: dict) -> dict | None:
+    """Translate config.yaml whatsapp: keys into WHATSAPP_* env vars.
+
+    Implements the apply_yaml_config_fn contract (#24849). Mirrors the legacy
+    whatsapp_cfg block from gateway/config.py::load_gateway_config(). Env vars
+    take precedence over YAML. Returns None — everything flows through env.
+    """
+    import json as _json
+    if "require_mention" in whatsapp_cfg and not os.getenv("WHATSAPP_REQUIRE_MENTION"):
+        os.environ["WHATSAPP_REQUIRE_MENTION"] = str(whatsapp_cfg["require_mention"]).lower()
+    if "mention_patterns" in whatsapp_cfg and not os.getenv("WHATSAPP_MENTION_PATTERNS"):
+        os.environ["WHATSAPP_MENTION_PATTERNS"] = _json.dumps(whatsapp_cfg["mention_patterns"])
+    frc = whatsapp_cfg.get("free_response_chats")
+    if frc is not None and not os.getenv("WHATSAPP_FREE_RESPONSE_CHATS"):
+        if isinstance(frc, list):
+            frc = ",".join(str(v) for v in frc)
+        os.environ["WHATSAPP_FREE_RESPONSE_CHATS"] = str(frc)
+    if "dm_policy" in whatsapp_cfg and not os.getenv("WHATSAPP_DM_POLICY"):
+        os.environ["WHATSAPP_DM_POLICY"] = str(whatsapp_cfg["dm_policy"]).lower()
+    af = whatsapp_cfg.get("allow_from")
+    if af is not None and not os.getenv("WHATSAPP_ALLOWED_USERS"):
+        if isinstance(af, list):
+            af = ",".join(str(v) for v in af)
+        os.environ["WHATSAPP_ALLOWED_USERS"] = str(af)
+    if "group_policy" in whatsapp_cfg and not os.getenv("WHATSAPP_GROUP_POLICY"):
+        os.environ["WHATSAPP_GROUP_POLICY"] = str(whatsapp_cfg["group_policy"]).lower()
+    gaf = whatsapp_cfg.get("group_allow_from")
+    if gaf is not None and not os.getenv("WHATSAPP_GROUP_ALLOWED_USERS"):
+        if isinstance(gaf, list):
+            gaf = ",".join(str(v) for v in gaf)
+        os.environ["WHATSAPP_GROUP_ALLOWED_USERS"] = str(gaf)
+    return None
+
+
+def _is_connected(config) -> bool:
+    """WhatsApp is considered connected when the user has explicitly enabled it
+    via ``WHATSAPP_ENABLED`` (or the YAML-bridged equivalent on the config).
+
+    Auth itself is handled by the external Node.js bridge — we can't verify the
+    bridge token here — so the opt-in flag is the connection signal. The legacy
+    built-in path keyed off ``WHATSAPP_ENABLED`` in both the connected-platforms
+    check and the setup-status display; returning an unconditional True here
+    would make WhatsApp always show as "configured" in ``hermes setup`` even
+    when the user never enabled it. #41112.
+    """
+    extra = getattr(config, "extra", {}) or {}
+    if config is not None and getattr(config, "enabled", False) and extra:
+        # An explicitly-enabled PlatformConfig with seeded extras (e.g. from
+        # YAML) counts as configured.
+        return True
+    # Read via hermes_cli.gateway.get_env_value (not os.getenv) so setup-status
+    # callers that patch get_env_value — and the gateway connected-platforms
+    # check — observe the same value. Matches the discord/slack plugin pattern.
+    import hermes_cli.gateway as gateway_mod
+    val = (gateway_mod.get_env_value("WHATSAPP_ENABLED") or "").strip().lower()
+    return val in {"true", "1", "yes"}
+
+
+def _build_adapter(config):
+    """Factory wrapper that constructs WhatsAppAdapter from a PlatformConfig."""
+    return WhatsAppAdapter(config)
+
+
+def register(ctx) -> None:
+    """Plugin entry point — called by the Hermes plugin system."""
+    ctx.register_platform(
+        name="whatsapp",
+        label="WhatsApp",
+        adapter_factory=_build_adapter,
+        check_fn=check_whatsapp_requirements,
+        is_connected=_is_connected,
+        required_env=["WHATSAPP_ENABLED"],
+        install_hint="WhatsApp requires a Node.js bridge — see the WhatsApp messaging docs",
+        setup_fn=interactive_setup,
+        apply_yaml_config_fn=_apply_yaml_config,
+        allowed_users_env="WHATSAPP_ALLOWED_USERS",
+        allow_all_env="WHATSAPP_ALLOW_ALL_USERS",
+        cron_deliver_env_var="WHATSAPP_HOME_CHANNEL",
+        standalone_sender_fn=_standalone_send,
+        max_message_length=4096,
+        emoji="💬",
+        allow_update_command=True,
+    )
