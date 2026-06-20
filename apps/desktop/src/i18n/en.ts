@@ -1344,8 +1344,10 @@ export const en: Translations = {
     running: 'Running',
     failed: 'Failed',
     done: 'Done',
+    stopped: 'Stopped',
     stop: 'Stop',
     dismiss: 'Dismiss',
+    clearFinished: 'Clear finished',
     waitingForOutput: 'Waiting for output…',
     noOutput: 'No output captured.',
     exit: code => `exit ${code}`

@@ -1529,8 +1529,10 @@ export const zh: Translations = {
     running: '运行中',
     failed: '失败',
     done: '完成',
+    stopped: '已停止',
     stop: '停止',
     dismiss: '关闭',
+    clearFinished: '清除已完成',
     waitingForOutput: '正在等待输出…',
     noOutput: '未捕获输出。',
     exit: code => `退出码 ${code}`

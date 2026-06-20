@@ -143,3 +143,67 @@ describe('StatusItemRow — background task output', () => {
     expect(opened).toEqual(['bg-xyz'])
   })
 })
+
+describe('StatusItemRow — signal exit rendering', () => {
+  it('a stopped process shows a SIGTERM badge and neutral styling', () => {
+    const stopped: ComposerStatusItem = {
+      id: 'bg-sig',
+      title: 'killed task',
+      type: 'background',
+      state: 'stopped',
+      exitCode: -15
+    }
+
+    const { container } = renderRow(stopped)
+
+    expect(container.textContent).toContain('SIGTERM')
+    // The badge should exist
+    const badge = container.querySelector('span[class*="bg-muted-foreground"]')
+    expect(badge).toBeTruthy()
+  })
+
+  it('a failed exit-1 process shows red exit 1', () => {
+    const failed: ComposerStatusItem = {
+      id: 'bg-fail',
+      title: 'failed task',
+      type: 'background',
+      state: 'failed',
+      exitCode: 1
+    }
+
+    const { container } = renderRow(failed)
+
+    expect(container.textContent).toContain('exit 1')
+    // The badge should have destructive styling
+    const badge = container.querySelector('span[class*="bg-destructive"]')
+    expect(badge).toBeTruthy()
+  })
+
+  it('a SIGKILL shows signal 9', () => {
+    const killed: ComposerStatusItem = {
+      id: 'bg-kill',
+      title: 'force killed',
+      type: 'background',
+      state: 'stopped',
+      exitCode: -9
+    }
+
+    const { container } = renderRow(killed)
+
+    expect(container.textContent).toContain('SIGKILL')
+  })
+
+  it('an unknown signal shows signal N format', () => {
+    const unknown: ComposerStatusItem = {
+      id: 'bg-sig',
+      title: 'sig task',
+      type: 'background',
+      state: 'stopped',
+      exitCode: -42
+    }
+
+    const { container } = renderRow(unknown)
+
+    expect(container.textContent).toContain('signal 42')
+  })
+})

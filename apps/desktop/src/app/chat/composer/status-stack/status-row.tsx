@@ -9,7 +9,7 @@ import { type Translations, useI18n } from '@/i18n'
 import { ArrowUpRight, X } from '@/lib/icons'
 import type { TodoStatus } from '@/lib/todos'
 import { cn } from '@/lib/utils'
-import type { ComposerStatusItem } from '@/store/composer-status'
+import { exitCodeLabel, type ComposerStatusItem } from '@/store/composer-status'
 
 const toolLabel = (name: string) =>
   name
@@ -77,7 +77,10 @@ function leadingGlyph(item: ComposerStatusItem, s: Translations['statusStack'], 
   return (
     <span
       aria-hidden
-      className={cn('size-1.5 rounded-full', item.state === 'failed' ? 'bg-destructive/80' : 'bg-emerald-500/70')}
+      className={cn(
+        'size-1.5 rounded-full',
+        item.state === 'failed' ? 'bg-destructive/80' : item.state === 'stopped' ? 'bg-muted-foreground/60' : 'bg-emerald-500/70'
+      )}
     />
   )
 }
@@ -114,6 +117,7 @@ export const StatusItemRow = memo(function StatusItemRow({
   const { t } = useI18n()
   const s = t.statusStack
   const failed = item.state === 'failed'
+  const stopped = item.state === 'stopped'
   const running = item.state === 'running'
 
   const action =
@@ -176,11 +180,17 @@ export const StatusItemRow = memo(function StatusItemRow({
             {toolLabel(item.currentTool)}
           </span>
         )}
-        {failed && typeof item.exitCode === 'number' && item.exitCode !== 0 && (
-          <span className="shrink-0 rounded bg-destructive/15 px-1 text-[0.58rem] font-semibold text-destructive tabular-nums">
-            {s.exit(item.exitCode)}
-          </span>
-        )}
+        {(failed || stopped) && typeof item.exitCode === 'number' && item.exitCode !== 0 && (() => {
+          const lbl = exitCodeLabel(item.exitCode)
+          return (
+            <span className={cn(
+              'shrink-0 rounded px-1 text-[0.58rem] font-semibold tabular-nums',
+              stopped ? 'bg-muted-foreground/15 text-muted-foreground' : 'bg-destructive/15 text-destructive'
+            )}>
+              {lbl.signal ? lbl.text : s.exit(item.exitCode)}
+            </span>
+          )
+        })()}
         {isBackground && <ArrowUpRight aria-hidden className="shrink-0 size-3.5 text-muted-foreground/45" />}
       </StatusRow>
     </Fragment>

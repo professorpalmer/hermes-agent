@@ -1423,8 +1423,10 @@ export const zhHant = defineLocale({
     running: '執行中',
     failed: '失敗',
     done: '完成',
+    stopped: '已停止',
     stop: '停止',
     dismiss: '關閉',
+    clearFinished: '清除已完成',
     waitingForOutput: '正在等待輸出…',
     noOutput: '未擷取輸出。',
     exit: code => `結束碼 ${code}`

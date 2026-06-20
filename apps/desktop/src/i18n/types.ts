@@ -1021,8 +1021,10 @@ export interface Translations {
     running: string
     failed: string
     done: string
+    stopped: string
     stop: string
     dismiss: string
+    clearFinished: string
     waitingForOutput: string
     noOutput: string
     exit: (code: number) => string
