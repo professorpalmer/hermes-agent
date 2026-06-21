@@ -613,7 +613,26 @@ export function useSessionActions({
       await ensureGatewayProfile(sessionProfile)
 
       const cachedRuntimeId = runtimeIdByStoredSessionIdRef.current.get(storedSessionId)
-      const cachedState = cachedRuntimeId && sessionStateByRuntimeIdRef.current.get(cachedRuntimeId)
+      const cachedStateRaw = cachedRuntimeId && sessionStateByRuntimeIdRef.current.get(cachedRuntimeId)
+
+      // Cross-check the cached state still BELONGS to the session we're resuming
+      // before trusting the warm fast-path. The runtime-id mapping can go stale
+      // and resolve to a live-but-DIFFERENT session: a pooled profile backend
+      // idle-reaped and respawned (pruneSecondaryGateways) re-mints runtime ids,
+      // and a recycled id can land on another stored session's cache entry. The
+      // existing `session.usage` 404 guard below only catches a runtime id that
+      // is fully DEAD — a recycled id still 200s, so without this check the
+      // fast-path paints the wrong transcript under the current route (the
+      // "open a chat, a different chat loads" bug). If the cache entry claims a
+      // different stored id, the mapping is cross-wired: drop both sides and
+      // fall through to a full resume that rebinds a correct runtime id.
+      const cachedState =
+        cachedStateRaw && cachedStateRaw.storedSessionId === storedSessionId ? cachedStateRaw : null
+
+      if (cachedRuntimeId && cachedStateRaw && !cachedState) {
+        runtimeIdByStoredSessionIdRef.current.delete(storedSessionId)
+        sessionStateByRuntimeIdRef.current.delete(cachedRuntimeId)
+      }
 
       if (cachedRuntimeId && cachedState) {
         const stored = $sessions.get().find(session => session.id === storedSessionId)
