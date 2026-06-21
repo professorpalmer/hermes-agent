@@ -16,7 +16,14 @@ export const SIDEBAR_MAX_WIDTH = 360
 // Open at the same width as the sessions sidebar so the two rails match.
 export const FILE_BROWSER_DEFAULT_WIDTH = `${SIDEBAR_DEFAULT_WIDTH}px`
 export const FILE_BROWSER_MIN_WIDTH = '14rem'
-export const FILE_BROWSER_MAX_WIDTH = '20rem'
+// Drag-out cap for the file-browser / source-control rail. Viewport-relative
+// (not a fixed rem) so it scales with the window and the side-by-side diff
+// viewer + branch/source-control UI can be dragged out wide enough to be
+// usable. The pane-shell drag clamp + the chat column's own min-width keep a
+// drag from ever crushing the chat, so a large cap is safe (mirrors the
+// preview/browser rail's vw-based cap). Was '20rem' (~320px) — far too narrow
+// for the diff viewer.
+export const FILE_BROWSER_MAX_WIDTH = '80vw'
 
 export const SIDEBAR_SESSIONS_PAGE_SIZE = 50
 
