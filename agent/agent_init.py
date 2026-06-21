@@ -193,6 +193,7 @@ def init_agent(
     browser_act_callback: callable = None,
     browser_extract_callback: callable = None,
     browser_screenshot_callback: callable = None,
+    set_workspace_callback: callable = None,
     step_callback: callable = None,
     stream_delta_callback: callable = None,
     interim_assistant_callback: callable = None,
@@ -431,6 +432,7 @@ def init_agent(
     agent.browser_act_callback = browser_act_callback
     agent.browser_extract_callback = browser_extract_callback
     agent.browser_screenshot_callback = browser_screenshot_callback
+    agent.set_workspace_callback = set_workspace_callback
     agent.step_callback = step_callback
     agent.stream_delta_callback = stream_delta_callback
     agent.interim_assistant_callback = interim_assistant_callback
