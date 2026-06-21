@@ -47,6 +47,11 @@ _HERMES_CORE_TOOLS = [
     "browser_type", "browser_scroll", "browser_back",
     "browser_press", "browser_get_images",
     "browser_vision", "browser_console", "browser_cdp", "browser_dialog",
+    # Desktop GUI in-app browser panel (gated on HERMES_DESKTOP via check_fn
+    # in tools/desktop_browser_tool.py — hidden outside the GUI, same pattern
+    # as read_terminal above).
+    "desktop_browser_navigate", "desktop_browser_read", "desktop_browser_act",
+    "desktop_browser_extract", "desktop_browser_screenshot",
     # Text-to-speech
     "text_to_speech",
     # Planning & memory
@@ -348,6 +353,9 @@ TOOLSETS = {
             "browser_type", "browser_scroll", "browser_back",
             "browser_press", "browser_get_images",
             "browser_vision", "browser_console", "browser_cdp", "browser_dialog",
+            # Desktop GUI in-app browser panel (HERMES_DESKTOP-gated via check_fn).
+            "desktop_browser_navigate", "desktop_browser_read", "desktop_browser_act",
+            "desktop_browser_extract", "desktop_browser_screenshot",
             "todo", "memory",
             "session_search", "clarify",
             "execute_code", "delegate_task",
