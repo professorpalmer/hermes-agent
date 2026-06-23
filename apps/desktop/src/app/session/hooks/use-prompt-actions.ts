@@ -37,6 +37,7 @@ import {
   updateComposerAttachment
 } from '@/store/composer'
 import { resetSessionBackground } from '@/store/composer-status'
+import { clearPreviewArtifacts } from '@/store/preview-status'
 import { clearNotifications, notify, notifyError } from '@/store/notifications'
 import { requestDesktopOnboarding } from '@/store/onboarding'
 import { $activeGatewayProfile, $newChatProfile, ensureGatewayProfile, normalizeProfileKey } from '@/store/profile'
@@ -1439,7 +1440,15 @@ export function usePromptActions({
 
     clearSessionTodos(sessionId)
     clearSessionSubagents(sessionId)
-    resetSessionBackground(sessionId)
+    // NOTE: do NOT call resetSessionBackground() here. A plain interrupt
+    // (Stop button, or promoting a queued message via "send now while busy")
+    // preserves the conversation timeline — it does not discard turns. The
+    // backend's session.interrupt deliberately does NOT kill the session's
+    // background processes (terminal(background=true) is meant to outlive a
+    // turn), so the renderer must not kill them either. resetSessionBackground
+    // belongs only on the true rewind paths (restoreToMessage / editMessage),
+    // where the spawning turns are genuinely abandoned. Killing here nuked the
+    // user's in-flight background work on every queue-send. See #<bg-kill>.
 
     try {
       await requestGateway('session.interrupt', { session_id: sessionId })
@@ -1650,6 +1659,7 @@ export function usePromptActions({
       // rows (and kill the live processes) before the fresh run repopulates.
       clearSessionTodos(sessionId)
       resetSessionBackground(sessionId)
+      clearPreviewArtifacts(sessionId)
 
       clearNotifications()
       setMutableRef(busyRef, true)
@@ -1712,6 +1722,7 @@ export function usePromptActions({
       // processes) before the re-run repopulates them.
       clearSessionTodos(sessionId)
       resetSessionBackground(sessionId)
+      clearPreviewArtifacts(sessionId)
 
       clearNotifications()
       setMutableRef(busyRef, true)

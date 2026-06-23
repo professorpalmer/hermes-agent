@@ -4,10 +4,12 @@ import { closeBrowser as closeBrowserTab } from './browser'
 import {
   $rightRailActiveTabId,
   RIGHT_RAIL_BROWSER_TAB_ID,
+  PREVIEW_PANE_ID,
   RIGHT_RAIL_PREVIEW_TAB_ID,
   type RightRailTabId,
   selectRightRailTab
 } from './layout'
+import { setPaneOpen } from './panes'
 import { $activeSessionId, $selectedStoredSessionId } from './session'
 
 export interface PreviewTarget {
@@ -95,10 +97,15 @@ function isSamePreviewTarget(a: PreviewTarget | null, b: PreviewTarget | null): 
   )
 }
 
+function showLivePreviewTab() {
+  setPaneOpen(PREVIEW_PANE_ID, true)
+  selectRightRailTab(RIGHT_RAIL_PREVIEW_TAB_ID)
+}
+
 export function setPreviewTarget(target: PreviewTarget | null) {
   if (isSamePreviewTarget($previewTarget.get(), target)) {
     if (target) {
-      selectRightRailTab(RIGHT_RAIL_PREVIEW_TAB_ID)
+      showLivePreviewTab()
     }
 
     return
@@ -107,7 +114,7 @@ export function setPreviewTarget(target: PreviewTarget | null) {
   $previewTarget.set(target)
 
   if (target) {
-    selectRightRailTab(RIGHT_RAIL_PREVIEW_TAB_ID)
+    showLivePreviewTab()
   }
 }
 
@@ -122,6 +129,7 @@ function openFilePreviewTarget(target: PreviewTarget) {
   const tab: FilePreviewTab = { id, target }
 
   $filePreviewTabs.set(index === -1 ? [...current, tab] : current.map((item, i) => (i === index ? tab : item)))
+  setPaneOpen(PREVIEW_PANE_ID, true)
   selectRightRailTab(id)
 }
 
@@ -379,6 +387,8 @@ export function dismissPreviewTarget() {
   if ($rightRailActiveTabId.get() === RIGHT_RAIL_PREVIEW_TAB_ID) {
     selectRightRailTab($filePreviewTabs.get()[0]?.id ?? RIGHT_RAIL_PREVIEW_TAB_ID)
   }
+
+  setPaneOpen(PREVIEW_PANE_ID, $filePreviewTabs.get().length > 0)
 }
 
 function closeFilePreviewTab(tabId: RightRailTabId) {
@@ -399,6 +409,10 @@ function closeFilePreviewTab(tabId: RightRailTabId) {
 
   if ($rightRailActiveTabId.get() === tabId) {
     selectRightRailTab(next[Math.min(index, next.length - 1)]?.id ?? RIGHT_RAIL_PREVIEW_TAB_ID)
+  }
+
+  if (next.length === 0 && !$previewTarget.get()) {
+    setPaneOpen(PREVIEW_PANE_ID, false)
   }
 }
 
@@ -429,12 +443,14 @@ export function closeRightRail() {
   }
 
   $filePreviewTabs.set([])
+  setPaneOpen(PREVIEW_PANE_ID, false)
 }
 
 export function clearSessionPreviewRegistry() {
   $sessionPreviewRegistry.set({})
   setPreviewTarget(null)
   $filePreviewTabs.set([])
+  setPaneOpen(PREVIEW_PANE_ID, false)
   selectRightRailTab(RIGHT_RAIL_PREVIEW_TAB_ID)
 }
 
