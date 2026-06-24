@@ -1986,6 +1986,7 @@ def _launch_tui(
     checkpoints: bool = False,
     pass_session_id: bool = False,
     max_turns: Optional[int] = None,
+    reasoning_effort: Optional[str] = None,
     accept_hooks: bool = False,
 ):
     """Replace current process with the TUI."""
@@ -2065,6 +2066,8 @@ def _launch_tui(
         env["HERMES_TUI_PASS_SESSION_ID"] = "1"
     if max_turns is not None:
         env["HERMES_TUI_MAX_TURNS"] = str(max_turns)
+    if reasoning_effort is not None:
+        env["HERMES_TUI_REASONING_EFFORT"] = str(reasoning_effort)
     if verbose:
         env["HERMES_TUI_TOOL_PROGRESS"] = "verbose"
     elif quiet:
@@ -2364,6 +2367,7 @@ def cmd_chat(args):
             checkpoints=getattr(args, "checkpoints", False),
             pass_session_id=getattr(args, "pass_session_id", False),
             max_turns=getattr(args, "max_turns", None),
+            reasoning_effort=getattr(args, "reasoning_effort", None),
             accept_hooks=getattr(args, "accept_hooks", False),
         )
 
@@ -2385,6 +2389,7 @@ def cmd_chat(args):
         "checkpoints": getattr(args, "checkpoints", False),
         "pass_session_id": getattr(args, "pass_session_id", False),
         "max_turns": getattr(args, "max_turns", None),
+        "reasoning_effort": getattr(args, "reasoning_effort", None),
         "ignore_rules": getattr(args, "ignore_rules", False) or getattr(args, "safe_mode", False),
         "ignore_user_config": getattr(args, "ignore_user_config", False) or getattr(args, "safe_mode", False),
         "compact": getattr(args, "compact", False),
