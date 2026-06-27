@@ -20,6 +20,7 @@ import {
   Clock,
   Cpu,
   Download,
+  Egg,
   GitBranch,
   Globe,
   type IconComponent,
@@ -43,9 +44,17 @@ import {
 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { openBrowser } from '@/store/browser'
-import { $commandPaletteOpen, $commandPalettePage, closeCommandPalette, setCommandPaletteOpen } from '@/store/command-palette'
+import { $repoWorktrees } from '@/store/coding-status'
+import {
+  $commandPaletteOpen,
+  $commandPalettePage,
+  closeCommandPalette,
+  setCommandPaletteOpen
+} from '@/store/command-palette'
 import { $bindings } from '@/store/keybinds'
 import { setFileBrowserOpen } from '@/store/layout'
+import { openPetGenerate } from '@/store/pet-generate'
+import { requestStartWorkSession } from '@/store/projects'
 import { runGatewayRestart } from '@/store/system-actions'
 import { luminance } from '@/themes/color'
 import { type ThemeMode, useTheme } from '@/themes/context'
@@ -204,7 +213,8 @@ function themeSupportsMode(name: string, target: 'light' | 'dark'): boolean {
     return true
   }
 
-  const background = target === 'dark' ? (resolved.darkColors ?? resolved.colors).background : resolved.colors.background
+  const background =
+    target === 'dark' ? (resolved.darkColors ?? resolved.colors).background : resolved.colors.background
 
   return target === 'dark' ? luminance(background) <= 0.5 : luminance(background) > 0.5
 }
@@ -214,6 +224,7 @@ export function CommandPalette() {
   const open = useStore($commandPaletteOpen)
   const pendingPage = useStore($commandPalettePage)
   const bindings = useStore($bindings)
+  const worktrees = useStore($repoWorktrees)
   const navigate = useNavigate()
   const { availableThemes, resolvedMode, setMode, setTheme, themeName } = useTheme()
   const [search, setSearch] = useState('')
@@ -291,6 +302,30 @@ export function CommandPalette() {
   const baseGroups = useMemo<PaletteGroup[]>(() => {
     const settingsTab = (tab: string) => `${SETTINGS_ROUTE}?tab=${tab}`
     const cc = t.commandCenter
+
+    // The active repo's worktrees → "new conversation in <branch>". This is the
+    // ⌘K-typed "I want to work on <branch>" reflex: each entry seeds a fresh
+    // session anchored to that worktree's checkout (requestStartWorkSession),
+    // so git is the source of truth and edits land in the right tree.
+    const branchGroup: PaletteGroup[] =
+      worktrees.length > 0
+        ? [
+            {
+              heading: cc.branches,
+              items: worktrees.map(wt => {
+                const name = wt.branch?.trim() || wt.path.split('/').pop() || wt.path
+
+                return {
+                  icon: GitBranch,
+                  id: `worktree-${wt.path}`,
+                  keywords: ['branch', 'worktree', 'switch', name, wt.path],
+                  label: cc.startInBranch(name),
+                  run: () => requestStartWorkSession(wt.path)
+                }
+              })
+            }
+          ]
+        : []
 
     return [
       {
@@ -372,6 +407,7 @@ export function CommandPalette() {
           { action: 'nav.agents', icon: Cpu, id: 'nav-agents', label: t.agents.title, run: go(AGENTS_ROUTE) }
         ]
       },
+      ...branchGroup,
       {
         heading: cc.commandCenter,
         items: [
@@ -431,6 +467,13 @@ export function CommandPalette() {
             keywords: ['pet', 'petdex', 'mascot', 'pets', '/pet', 'paw'],
             label: cc.pets.title,
             to: 'pets'
+          },
+          {
+            icon: Egg,
+            id: 'appearance-generate-pet',
+            keywords: ['pet', 'generate', 'create', 'make', 'new pet', 'mascot', 'hatch', 'ai'],
+            label: cc.generatePet.title,
+            run: () => openPetGenerate()
           }
         ]
       },
@@ -454,7 +497,7 @@ export function CommandPalette() {
         ]
       }
     ]
-  }, [go, settingsSectionLabel, t])
+  }, [go, settingsSectionLabel, t, worktrees])
 
   // The long, granular lists (settings fields, API keys, MCP servers, archived
   // chats) only surface once the user types — otherwise they'd bury the
@@ -675,6 +718,8 @@ export function CommandPalette() {
                   event.preventDefault()
                   event.stopPropagation()
                   goBack()
+
+                  return
                 }
               }}
               onValueChange={setSearch}
@@ -685,7 +730,13 @@ export function CommandPalette() {
             <CommandList className="dt-portal-scrollbar max-h-[min(20rem,56vh)]">
               {/* Server-driven pages render their own list; the rest show groups. */}
               {page === 'pets' ? (
-                <PetPalettePage search={search} />
+                <PetPalettePage
+                  onGenerate={() => {
+                    closeCommandPalette()
+                    openPetGenerate()
+                  }}
+                  search={search}
+                />
               ) : page === 'install-theme' ? (
                 <MarketplaceThemePage onPickTheme={setTheme} search={search} />
               ) : (
