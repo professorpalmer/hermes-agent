@@ -1,6 +1,7 @@
 import { atom } from 'nanostores'
 
-import { $rightRailActiveTabId, RIGHT_RAIL_BROWSER_TAB_ID, selectRightRailTab } from './layout'
+import { $rightRailActiveTabId, PREVIEW_PANE_ID, RIGHT_RAIL_BROWSER_TAB_ID, selectRightRailTab } from './layout'
+import { setPaneOpen } from './panes'
 
 // The in-app browser is a persistent, navigable webview tab in the right rail —
 // distinct from the preview pane (which pins a single artifact/URL). The user
@@ -87,6 +88,11 @@ export function openBrowser(input?: string): string {
   })
   $browserNavRequest.set({ nonce: $browserNavRequest.get().nonce + 1, url })
   selectRightRailTab(RIGHT_RAIL_BROWSER_TAB_ID)
+  // The right rail only takes a layout column when its pane container is open.
+  // openBrowser must force the preview pane open or the webview renders into a
+  // zero-width (invisible) rail. (Regressed when the upstream merge coupled
+  // railColumnOpen to the persisted previewPaneOpen atom.)
+  setPaneOpen(PREVIEW_PANE_ID, true)
 
   return url
 }
