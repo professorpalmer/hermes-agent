@@ -36,6 +36,7 @@ import {
   RefreshCw,
   Settings,
   Settings2,
+  Starmap,
   Sun,
   Terminal,
   Users,
@@ -70,7 +71,8 @@ import {
   PROFILES_ROUTE,
   sessionRoute,
   SETTINGS_ROUTE,
-  SKILLS_ROUTE
+  SKILLS_ROUTE,
+  STARMAP_ROUTE
 } from '../routes'
 import { FIELD_LABELS, SECTIONS } from '../settings/constants'
 import { fieldCopyForSchemaKey } from '../settings/field-copy'
@@ -404,7 +406,14 @@ export function CommandPalette() {
             run: go(CRON_ROUTE)
           },
           { action: 'nav.profiles', icon: Users, id: 'nav-profiles', label: t.profiles.title, run: go(PROFILES_ROUTE) },
-          { action: 'nav.agents', icon: Cpu, id: 'nav-agents', label: t.agents.title, run: go(AGENTS_ROUTE) }
+          { action: 'nav.agents', icon: Cpu, id: 'nav-agents', label: t.agents.title, run: go(AGENTS_ROUTE) },
+          {
+            icon: Starmap,
+            id: 'nav-starmap',
+            keywords: ['star map', 'memory', 'memories', 'skills', 'graph', 'learning', 'constellation'],
+            label: t.starmap.title,
+            run: go(STARMAP_ROUTE)
+          }
         ]
       },
       ...branchGroup,
