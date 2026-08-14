@@ -13,6 +13,7 @@ import {
   isSessionBusyError,
   isSessionIdCandidate,
   isSessionNotFoundError,
+  isTargetSessionBusy,
   readFileDataUrlForAttach,
   renderRpcResult,
   SessionRecoveryAborted,
@@ -21,6 +22,18 @@ import {
   visibleUserOrdinal,
   withSessionNotFoundResume
 } from './utils'
+
+describe('isTargetSessionBusy', () => {
+  it('reads the target session slice, not the leftover foreground flag', () => {
+    expect(isTargetSessionBusy({ a: { busy: true }, b: { busy: false } }, 'b', true)).toBe(false)
+    expect(isTargetSessionBusy({ a: { busy: true } }, 'b', true)).toBe(false)
+  })
+
+  it('uses the focused draft flag only when there is no session id', () => {
+    expect(isTargetSessionBusy({}, null, true)).toBe(true)
+    expect(isTargetSessionBusy({}, null, false)).toBe(false)
+  })
+})
 
 describe('isSessionIdCandidate', () => {
   it('accepts the timestamped and hex id forms', () => {
