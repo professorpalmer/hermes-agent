@@ -27,7 +27,9 @@ import { getLogs, getStatus, type HermesGateway } from '@/hermes'
 import { $gateway, ensureGatewayForAgent, openGatewayForAgent, openGatewayForProfile } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
 import { $activeGatewayProfile, ensureGatewayProfile, newSessionInProfile, setShowAllProfiles } from '@/store/profile'
-import { $activeSessionId, $currentCwd, $currentModel, $gatewayState } from '@/store/session'
+import { type ChatMessage, textPart } from '@/lib/chat-messages'
+import { $activeSessionId, $currentCwd, $currentModel, $gatewayState, $selectedStoredSessionId, setMessages, touchSessionActivity } from '@/store/session'
+import { $sessionStates } from '@/store/session-states'
 import { runGatewayRestart } from '@/store/system-actions'
 
 // -- state: readonly views over the app's live atoms -------------------------
@@ -201,6 +203,58 @@ export const host = {
 
   /** One-shot system status snapshot (platforms, versions, …). */
   status: async () => getStatus(),
+
+  /** Persist a user/assistant line via session.append_message and paint
+   *  only the target session (never a different chat that happens to be
+   *  on screen). */
+  appendMessage: (opts: { role?: string; sessionId?: null | string; text?: string } = {}): boolean => {
+    const body = String(opts.text ?? '').trim()
+    if (!body) {
+      return false
+    }
+
+    const role = opts.role === 'user' ? 'user' : 'assistant'
+    const message: ChatMessage = {
+      id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      role,
+      parts: [textPart(body)]
+    }
+
+    const runtimeId = String(opts.sessionId || $activeSessionId.get() || '').trim()
+    const activeId = String($activeSessionId.get() || '').trim()
+
+    if (runtimeId) {
+      const gateway = $gateway.get()
+      if (gateway) {
+        void gateway
+          .request('session.append_message', {
+            session_id: runtimeId,
+            role,
+            content: body,
+            observed: true
+          })
+          .catch(() => undefined)
+      }
+    }
+
+    if (!runtimeId || runtimeId === activeId) {
+      setMessages(current => [...current, message])
+    }
+
+    if (runtimeId) {
+      const states = $sessionStates.get()
+      const prev = states[runtimeId]
+      if (prev) {
+        $sessionStates.set({
+          ...states,
+          [runtimeId]: { ...prev, messages: [...prev.messages, message] }
+        })
+      }
+    }
+
+    touchSessionActivity(runtimeId || $selectedStoredSessionId.get(), { preview: body })
+    return true
+  },
 
   /** Gateway JSON-RPC — sessions, config, skills, cron, kanban, everything
    *  the app itself uses. Lazy: resolves the LIVE socket per call. */
