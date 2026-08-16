@@ -696,7 +696,17 @@ _apply_profile_override()
 from hermes_cli.config import get_hermes_home
 from hermes_cli.env_loader import load_hermes_dotenv
 
-load_hermes_dotenv(project_env=PROJECT_ROOT / ".env")
+# Updating dependencies must not import optional secret-manager libraries into
+# the updater process before ``uv`` replaces the environment.  On Windows,
+# Bitwarden's cryptography import maps ``_rust.pyd`` and the parent updater then
+# prevents its own child installer from replacing that file (#73381).  Profile
+# flags have already been stripped above, so the first remaining argument is
+# the authoritative argparse subcommand.  Dotenv/managed config still loads;
+# only external secret fetches are unnecessary for installation maintenance.
+load_hermes_dotenv(
+    project_env=PROJECT_ROOT / ".env",
+    load_external_secrets=sys.argv[1:2] != ["update"],
+)
 
 # Bridge security.redact_secrets from config.yaml → HERMES_REDACT_SECRETS env
 # var BEFORE hermes_logging imports agent.redact (which snapshots the flag at
@@ -8590,12 +8600,17 @@ def _run_quarantined_install(
         moved = _quarantine_running_hermes_exe(scripts_dir)
     try:
         _run_install_with_heartbeat(cmd, env=env)
-    except BaseException:
-        # Restore shims if pip/uv didn't write replacements (e.g. install
-        # failed before the entry-points step). Don't swallow the error.
+    finally:
+        # Restore shims when the installer didn't write replacements — on
+        # FAILURE (install died before the entry-points step) and on SUCCESS
+        # too: uv audits an already-satisfied editable install as a no-op and
+        # rewrites no entry points, which would otherwise leave the shims
+        # quarantined aside and `hermes` missing from PATH after a green
+        # install (#75584). _restore_quarantined_exes skips any shim the
+        # installer actually replaced, so this never clobbers fresh output.
+        # Errors are not swallowed — the finally re-raises whatever escaped.
         if scripts_dir is not None:
             _restore_quarantined_exes(moved)
-        raise
 
 
 def _cleanup_quarantined_exes(scripts_dir: Path | None = None) -> None:
@@ -12362,6 +12377,38 @@ def main():
         "grant",
         help="Request the grants (opens the dialog attributed to CuaDriver)",
     )
+    computer_use_browser_approve = computer_use_sub.add_parser(
+        "browser-approve",
+        help="Mint a single-use token authorizing browser attachment for one exact window",
+        description=(
+            "Runs `cua-driver browser-approve` to mint a five-minute,\n"
+            "single-use token that authorizes ONE browser preparation for the\n"
+            "exact process (and window) you name. Give the printed token to\n"
+            "the agent; it passes it as approval_token on the\n"
+            "cua_browser_prepare action.\n\n"
+            "This is the explicit human boundary for attaching to a browser —\n"
+            "especially an existing signed-in profile, where the DevTools\n"
+            "protocol can see that profile's live pages, cookies, and storage.\n"
+            "Ordinary tool approval never substitutes for this grant, so a\n"
+            "model can never mint or guess the token itself.\n\n"
+            "Find the pid/window_id via the agent (list_windows) or ask it to\n"
+            "read them from a native capture."
+        ),
+    )
+    computer_use_browser_approve.add_argument(
+        "--pid", type=int, required=True,
+        help="Exact browser process id to authorize",
+    )
+    computer_use_browser_approve.add_argument(
+        "--window-id", type=int, default=None,
+        help="Exact native window id (required for existing-profile attachment)",
+    )
+    computer_use_browser_approve.add_argument(
+        "--profile-mode",
+        choices=["isolated_new", "isolated_named", "existing_profile"],
+        default="isolated_new",
+        help="Preparation the token authorizes (default: isolated_new)",
+    )
 
     def cmd_computer_use(args):
         action = getattr(args, "computer_use_action", None)
@@ -12418,6 +12465,36 @@ def main():
                 json_output=bool(getattr(args, "json", False)),
             )
             sys.exit(code)
+        if action == "browser-approve":
+            import subprocess
+            from tools.computer_use.cua_backend import (
+                cua_driver_child_env,
+                cua_driver_install_hint,
+                resolve_cua_driver_cmd,
+            )
+            binary = resolve_cua_driver_cmd()
+            if not binary:
+                print(cua_driver_install_hint())
+                sys.exit(2)
+            cmd = [binary, "browser-approve", "--pid", str(args.pid)]
+            window_id = getattr(args, "window_id", None)
+            if window_id is not None:
+                cmd += ["--window-id", str(window_id)]
+            cmd += ["--profile-mode", getattr(args, "profile_mode", "isolated_new")]
+            try:
+                # Interactive passthrough: cua-driver requires a TTY to mint
+                # the grant, prints the token itself, and owns the expiry.
+                proc = subprocess.run(cmd, env=cua_driver_child_env())
+            except OSError as exc:
+                print(f"cua-driver browser-approve failed to launch: {exc}", file=sys.stderr)
+                sys.exit(2)
+            if proc.returncode == 0:
+                print(
+                    "\nGive the token above to the agent — it passes it as "
+                    "approval_token on cua_browser_prepare. Single use, "
+                    "expires in ~5 minutes."
+                )
+            sys.exit(proc.returncode)
         if action == "permissions":
             perms_action = getattr(args, "computer_use_perms_action", None)
             if perms_action == "grant":
